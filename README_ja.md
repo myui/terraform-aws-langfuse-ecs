@@ -211,6 +211,8 @@ cd infra
 # 初期化
 terraform init
 
+# export AWS_PROFILE=rd:engineering
+
 # プラン確認
 terraform plan -var-file=../tfvars/dev.tfvars
 

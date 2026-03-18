@@ -211,6 +211,8 @@ cd infra
 # Initialize
 terraform init
 
+# export AWS_PROFILE=rd:engineering
+
 # Review plan
 terraform plan -var-file=../tfvars/dev.tfvars
 
