@@ -1,9 +1,9 @@
 # S3 Bucket for Langfuse
 resource "aws_s3_bucket" "main" {
-  bucket_prefix = "${var.project_name}-"
+  bucket_prefix = "${var.service_name}-"
 
   tags = {
-    Name = "${var.project_name}-bucket"
+    Name = "${var.service_name}-bucket"
   }
 }
 
@@ -71,6 +71,6 @@ resource "aws_vpc_endpoint" "s3" {
   route_table_ids   = data.aws_route_tables.private.ids
 
   tags = {
-    Name = "${var.project_name}-s3-endpoint"
+    Name = "${var.service_name}-s3-endpoint"
   }
 }

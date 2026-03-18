@@ -3,10 +3,15 @@ variable "aws_region" {
   type        = string
 }
 
-variable "project_name" {
-  description = "Resource naming prefix"
+variable "service_name" {
+  description = "Resource naming prefix and service tag"
   type        = string
   default     = "langfuse"
+}
+
+variable "user" {
+  description = "User tag for resource identification"
+  type        = string
 }
 
 variable "vpc_id" {

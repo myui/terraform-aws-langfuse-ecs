@@ -1,16 +1,16 @@
 # RDS Subnet Group
 resource "aws_db_subnet_group" "main" {
-  name       = "${var.project_name}-db-subnet"
+  name       = "${var.service_name}-db-subnet"
   subnet_ids = var.private_subnet_ids
 
   tags = {
-    Name = "${var.project_name}-db-subnet"
+    Name = "${var.service_name}-db-subnet"
   }
 }
 
 # RDS PostgreSQL Instance
 resource "aws_db_instance" "main" {
-  identifier = "${var.project_name}-postgres"
+  identifier = "${var.service_name}-postgres"
 
   engine         = "postgres"
   engine_version = "16"
@@ -38,6 +38,6 @@ resource "aws_db_instance" "main" {
   maintenance_window      = "mon:04:00-mon:05:00"
 
   tags = {
-    Name = "${var.project_name}-postgres"
+    Name = "${var.service_name}-postgres"
   }
 }

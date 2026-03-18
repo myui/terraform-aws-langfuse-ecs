@@ -1,6 +1,6 @@
 # ECS Task Execution Role
 resource "aws_iam_role" "ecs_task_execution" {
-  name = "${var.project_name}-ecs-task-execution"
+  name = "${var.service_name}-ecs-task-execution"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -22,7 +22,7 @@ resource "aws_iam_role_policy_attachment" "ecs_task_execution" {
 }
 
 resource "aws_iam_role_policy" "ecs_task_execution_secrets" {
-  name = "${var.project_name}-secrets-access"
+  name = "${var.service_name}-secrets-access"
   role = aws_iam_role.ecs_task_execution.id
 
   policy = jsonencode({
@@ -47,7 +47,7 @@ resource "aws_iam_role_policy" "ecs_task_execution_secrets" {
 
 # ECS Task Role (for application access to AWS services)
 resource "aws_iam_role" "ecs_task" {
-  name = "${var.project_name}-ecs-task"
+  name = "${var.service_name}-ecs-task"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -64,7 +64,7 @@ resource "aws_iam_role" "ecs_task" {
 }
 
 resource "aws_iam_role_policy" "ecs_task_s3" {
-  name = "${var.project_name}-s3-access"
+  name = "${var.service_name}-s3-access"
   role = aws_iam_role.ecs_task.id
 
   policy = jsonencode({
@@ -89,7 +89,7 @@ resource "aws_iam_role_policy" "ecs_task_s3" {
 
 # EFS access for ClickHouse task
 resource "aws_iam_role_policy" "ecs_task_efs" {
-  name = "${var.project_name}-efs-access"
+  name = "${var.service_name}-efs-access"
   role = aws_iam_role.ecs_task.id
 
   policy = jsonencode({

@@ -1,6 +1,6 @@
 # ECS Cluster
 resource "aws_ecs_cluster" "main" {
-  name = var.project_name
+  name = var.service_name
 
   setting {
     name  = "containerInsights"
@@ -8,23 +8,23 @@ resource "aws_ecs_cluster" "main" {
   }
 
   tags = {
-    Name = var.project_name
+    Name = var.service_name
   }
 }
 
 # CloudWatch Log Groups
 resource "aws_cloudwatch_log_group" "web" {
-  name              = "/ecs/${var.project_name}/web"
+  name              = "/ecs/${var.service_name}/web"
   retention_in_days = 30
 }
 
 resource "aws_cloudwatch_log_group" "worker" {
-  name              = "/ecs/${var.project_name}/worker"
+  name              = "/ecs/${var.service_name}/worker"
   retention_in_days = 30
 }
 
 resource "aws_cloudwatch_log_group" "clickhouse" {
-  name              = "/ecs/${var.project_name}/clickhouse"
+  name              = "/ecs/${var.service_name}/clickhouse"
   retention_in_days = 30
 }
 
@@ -100,7 +100,7 @@ locals {
 # ==================== Langfuse Web ====================
 
 resource "aws_ecs_task_definition" "web" {
-  family                   = "${var.project_name}-web"
+  family                   = "${var.service_name}-web"
   requires_compatibilities = ["FARGATE"]
   network_mode             = "awsvpc"
   cpu                      = var.web_cpu
@@ -144,12 +144,12 @@ resource "aws_ecs_task_definition" "web" {
   ])
 
   tags = {
-    Name = "${var.project_name}-web"
+    Name = "${var.service_name}-web"
   }
 }
 
 resource "aws_ecs_service" "web" {
-  name            = "${var.project_name}-web"
+  name            = "${var.service_name}-web"
   cluster         = aws_ecs_cluster.main.id
   task_definition = aws_ecs_task_definition.web.arn
   desired_count   = 1
@@ -168,14 +168,14 @@ resource "aws_ecs_service" "web" {
   ]
 
   tags = {
-    Name = "${var.project_name}-web"
+    Name = "${var.service_name}-web"
   }
 }
 
 # ==================== Langfuse Worker ====================
 
 resource "aws_ecs_task_definition" "worker" {
-  family                   = "${var.project_name}-worker"
+  family                   = "${var.service_name}-worker"
   requires_compatibilities = ["FARGATE"]
   network_mode             = "awsvpc"
   cpu                      = var.worker_cpu
@@ -214,12 +214,12 @@ resource "aws_ecs_task_definition" "worker" {
   ])
 
   tags = {
-    Name = "${var.project_name}-worker"
+    Name = "${var.service_name}-worker"
   }
 }
 
 resource "aws_ecs_service" "worker" {
-  name            = "${var.project_name}-worker"
+  name            = "${var.service_name}-worker"
   cluster         = aws_ecs_cluster.main.id
   task_definition = aws_ecs_task_definition.worker.arn
   desired_count   = var.worker_desired_count
@@ -238,14 +238,14 @@ resource "aws_ecs_service" "worker" {
   ]
 
   tags = {
-    Name = "${var.project_name}-worker"
+    Name = "${var.service_name}-worker"
   }
 }
 
 # ==================== ClickHouse ====================
 
 resource "aws_ecs_task_definition" "clickhouse" {
-  family                   = "${var.project_name}-clickhouse"
+  family                   = "${var.service_name}-clickhouse"
   requires_compatibilities = ["FARGATE"]
   network_mode             = "awsvpc"
   cpu                      = var.clickhouse_cpu
@@ -320,12 +320,12 @@ resource "aws_ecs_task_definition" "clickhouse" {
   ])
 
   tags = {
-    Name = "${var.project_name}-clickhouse"
+    Name = "${var.service_name}-clickhouse"
   }
 }
 
 resource "aws_ecs_service" "clickhouse" {
-  name            = "${var.project_name}-clickhouse"
+  name            = "${var.service_name}-clickhouse"
   cluster         = aws_ecs_cluster.main.id
   task_definition = aws_ecs_task_definition.clickhouse.arn
   desired_count   = 1
@@ -348,6 +348,6 @@ resource "aws_ecs_service" "clickhouse" {
   ]
 
   tags = {
-    Name = "${var.project_name}-clickhouse"
+    Name = "${var.service_name}-clickhouse"
   }
 }

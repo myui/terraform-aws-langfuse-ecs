@@ -5,7 +5,7 @@ resource "aws_service_discovery_private_dns_namespace" "main" {
   vpc         = var.vpc_id
 
   tags = {
-    Name = "${var.project_name}-namespace"
+    Name = "${var.service_name}-namespace"
   }
 }
 
@@ -29,6 +29,6 @@ resource "aws_service_discovery_service" "clickhouse" {
   }
 
   tags = {
-    Name = "${var.project_name}-clickhouse"
+    Name = "${var.service_name}-clickhouse"
   }
 }

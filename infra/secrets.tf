@@ -33,7 +33,7 @@ resource "random_password" "encryption_key" {
 
 # Database URL secret
 resource "aws_secretsmanager_secret" "database_url" {
-  name = "${var.project_name}/database-url"
+  name = "${var.service_name}/database-url"
 }
 
 resource "aws_secretsmanager_secret_version" "database_url" {
@@ -43,7 +43,7 @@ resource "aws_secretsmanager_secret_version" "database_url" {
 
 # NextAuth secret
 resource "aws_secretsmanager_secret" "nextauth_secret" {
-  name = "${var.project_name}/nextauth-secret"
+  name = "${var.service_name}/nextauth-secret"
 }
 
 resource "aws_secretsmanager_secret_version" "nextauth_secret" {
@@ -53,7 +53,7 @@ resource "aws_secretsmanager_secret_version" "nextauth_secret" {
 
 # Salt secret
 resource "aws_secretsmanager_secret" "salt" {
-  name = "${var.project_name}/salt"
+  name = "${var.service_name}/salt"
 }
 
 resource "aws_secretsmanager_secret_version" "salt" {
@@ -63,7 +63,7 @@ resource "aws_secretsmanager_secret_version" "salt" {
 
 # Encryption key secret
 resource "aws_secretsmanager_secret" "encryption_key" {
-  name = "${var.project_name}/encryption-key"
+  name = "${var.service_name}/encryption-key"
 }
 
 resource "aws_secretsmanager_secret_version" "encryption_key" {
@@ -73,7 +73,7 @@ resource "aws_secretsmanager_secret_version" "encryption_key" {
 
 # ClickHouse password secret
 resource "aws_secretsmanager_secret" "clickhouse_password" {
-  name = "${var.project_name}/clickhouse-password"
+  name = "${var.service_name}/clickhouse-password"
 }
 
 resource "aws_secretsmanager_secret_version" "clickhouse_password" {

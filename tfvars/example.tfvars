@@ -1,6 +1,9 @@
 # AWS Configuration
 aws_region = "ap-northeast-1"
 
+# Resource Tags (for easy identification)
+user = "your-name"  # e.g., "john", "team-ml"
+
 # Network Configuration (use your existing VPC)
 vpc_id             = "vpc-xxxxxxxxxxxxxxxxx"
 public_subnet_ids  = ["subnet-xxxxxxxxxxxxxxxxx"]

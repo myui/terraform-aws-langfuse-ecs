@@ -1,13 +1,13 @@
 # EFS File System for ClickHouse data persistence
 resource "aws_efs_file_system" "clickhouse" {
-  creation_token = "${var.project_name}-clickhouse"
+  creation_token = "${var.service_name}-clickhouse"
   encrypted      = true
 
   performance_mode = "generalPurpose"
   throughput_mode  = "bursting"
 
   tags = {
-    Name = "${var.project_name}-clickhouse"
+    Name = "${var.service_name}-clickhouse"
   }
 }
 
@@ -39,6 +39,6 @@ resource "aws_efs_access_point" "clickhouse" {
   }
 
   tags = {
-    Name = "${var.project_name}-clickhouse"
+    Name = "${var.service_name}-clickhouse"
   }
 }

@@ -1,6 +1,6 @@
 # Security Group for Langfuse Web
 resource "aws_security_group" "web" {
-  name        = "${var.project_name}-web"
+  name        = "${var.service_name}-web"
   description = "Security group for Langfuse Web"
   vpc_id      = var.vpc_id
 
@@ -20,13 +20,13 @@ resource "aws_security_group" "web" {
   }
 
   tags = {
-    Name = "${var.project_name}-web"
+    Name = "${var.service_name}-web"
   }
 }
 
 # Security Group for Langfuse Worker
 resource "aws_security_group" "worker" {
-  name        = "${var.project_name}-worker"
+  name        = "${var.service_name}-worker"
   description = "Security group for Langfuse Worker"
   vpc_id      = var.vpc_id
 
@@ -46,13 +46,13 @@ resource "aws_security_group" "worker" {
   }
 
   tags = {
-    Name = "${var.project_name}-worker"
+    Name = "${var.service_name}-worker"
   }
 }
 
 # Security Group for ClickHouse
 resource "aws_security_group" "clickhouse" {
-  name        = "${var.project_name}-clickhouse"
+  name        = "${var.service_name}-clickhouse"
   description = "Security group for ClickHouse"
   vpc_id      = var.vpc_id
 
@@ -80,13 +80,13 @@ resource "aws_security_group" "clickhouse" {
   }
 
   tags = {
-    Name = "${var.project_name}-clickhouse"
+    Name = "${var.service_name}-clickhouse"
   }
 }
 
 # Security Group for RDS
 resource "aws_security_group" "rds" {
-  name        = "${var.project_name}-rds"
+  name        = "${var.service_name}-rds"
   description = "Security group for RDS PostgreSQL"
   vpc_id      = var.vpc_id
 
@@ -99,13 +99,13 @@ resource "aws_security_group" "rds" {
   }
 
   tags = {
-    Name = "${var.project_name}-rds"
+    Name = "${var.service_name}-rds"
   }
 }
 
 # Security Group for Redis
 resource "aws_security_group" "redis" {
-  name        = "${var.project_name}-redis"
+  name        = "${var.service_name}-redis"
   description = "Security group for ElastiCache Redis"
   vpc_id      = var.vpc_id
 
@@ -118,13 +118,13 @@ resource "aws_security_group" "redis" {
   }
 
   tags = {
-    Name = "${var.project_name}-redis"
+    Name = "${var.service_name}-redis"
   }
 }
 
 # Security Group for EFS
 resource "aws_security_group" "efs" {
-  name        = "${var.project_name}-efs"
+  name        = "${var.service_name}-efs"
   description = "Security group for EFS"
   vpc_id      = var.vpc_id
 
@@ -137,6 +137,6 @@ resource "aws_security_group" "efs" {
   }
 
   tags = {
-    Name = "${var.project_name}-efs"
+    Name = "${var.service_name}-efs"
   }
 }
