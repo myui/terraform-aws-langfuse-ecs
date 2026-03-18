@@ -1,6 +1,6 @@
 # Private DNS namespace for service discovery
 resource "aws_service_discovery_private_dns_namespace" "main" {
-  name        = "langfuse.local"
+  name        = var.dns_namespace
   description = "Private DNS namespace for Langfuse services"
   vpc         = var.vpc_id
 
@@ -10,7 +10,7 @@ resource "aws_service_discovery_private_dns_namespace" "main" {
 }
 
 # Service discovery for ClickHouse
-resource "aws_service_discovery_service" "clickhouse" {
+resource "aws_service_discovery_service" "main" {
   name = "clickhouse"
 
   dns_config {

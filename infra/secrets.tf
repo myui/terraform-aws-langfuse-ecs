@@ -38,7 +38,7 @@ resource "aws_secretsmanager_secret" "database_url" {
 
 resource "aws_secretsmanager_secret_version" "database_url" {
   secret_id     = aws_secretsmanager_secret.database_url.id
-  secret_string = "postgresql://${aws_db_instance.main.username}:${random_password.db_password.result}@${aws_db_instance.main.endpoint}/${var.db_name}"
+  secret_string = "postgresql://${module.rds.username}:${random_password.db_password.result}@${module.rds.endpoint}/${var.db_name}"
 }
 
 # NextAuth secret

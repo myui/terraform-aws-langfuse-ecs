@@ -51,10 +51,6 @@ resource "aws_s3_bucket_lifecycle_configuration" "main" {
 }
 
 # VPC Endpoint for S3 (Gateway type)
-data "aws_vpc" "selected" {
-  id = var.vpc_id
-}
-
 data "aws_route_tables" "private" {
   vpc_id = var.vpc_id
 
@@ -73,4 +69,29 @@ resource "aws_vpc_endpoint" "s3" {
   tags = {
     Name = "${var.service_name}-s3-endpoint"
   }
+}
+
+# S3 access policy for ECS Task Role
+resource "aws_iam_role_policy" "s3_access" {
+  name = "${var.service_name}-s3-access"
+  role = var.task_role_id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:GetObject",
+          "s3:PutObject",
+          "s3:DeleteObject",
+          "s3:ListBucket"
+        ]
+        Resource = [
+          aws_s3_bucket.main.arn,
+          "${aws_s3_bucket.main.arn}/*"
+        ]
+      }
+    ]
+  })
 }
