@@ -13,10 +13,10 @@ resource "aws_efs_file_system" "main" {
 
 # EFS Mount Targets (one per private subnet)
 resource "aws_efs_mount_target" "main" {
-  for_each = toset(var.private_subnet_ids)
+  count = length(var.private_subnet_ids)
 
   file_system_id  = aws_efs_file_system.main.id
-  subnet_id       = each.value
+  subnet_id       = var.private_subnet_ids[count.index]
   security_groups = [var.efs_security_group_id]
 }
 
