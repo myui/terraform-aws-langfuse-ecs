@@ -8,10 +8,12 @@ Terraform によるIaCでプロビジョニングする。
 ## Design Principles
 
 - Kubernetes 不使用（ECS Fargate ベース）
-- 既存 VPC を利用
+- VPC 自動作成または既存 VPC を利用
 - Security Group による IP 制限でアクセス制御
 - HTTPS は初期段階では不要（後日対応可能）
 - LB 不使用、Langfuse Web は Public Subnet に直接配置（Public IP 動的）
+- NAT Gateway 不使用、VPC Endpoints で AWS サービスにアクセス
+- コンテナイメージは ECR から取得（事前に push が必要）
 - シンプル構成を優先
 
 ---
@@ -23,12 +25,12 @@ Internet
   │
   │  SG: allowed_cidrs → port 3000
   ▼
-┌─────────────────── Existing VPC ──────────────────────┐
+┌─────────────── VPC (自動作成または既存) ──────────────┐
 │                                                        │
-│  Public Subnet (既存)                                  │
+│  Public Subnet                                         │
 │  └─ ECS Service: Langfuse Web (Public IP, 単一タスク)  │
 │                                                        │
-│  Private Subnets (既存)                                │
+│  Private Subnets                                       │
 │  ├─ ECS Service: Langfuse Worker (スケール可能)        │
 │  ├─ ECS Service: ClickHouse     (固定1タスク)          │
 │  │   └─ EFS (データ永続化)                              │
@@ -44,12 +46,13 @@ Internet
 
 ### Compute (ECS Fargate)
 
-| Service | Image | Port | Scaling | Subnet |
+| Service | Image (ECR) | Port | Scaling | Subnet |
 |---|---|---|---|---|
-| Langfuse Web | `langfuse/langfuse:3` | 3000 | 単一タスク (desired_count=1) | Public |
-| Langfuse Worker | `langfuse/langfuse-worker:3` | 3030 | ECS Service (desired_count 可変) | Private |
-| ClickHouse | `clickhouse/clickhouse-server` | 8123 (HTTP), 9000 (TCP) | 固定 desired_count=1 | Private |
+| Langfuse Web | `<account>.dkr.ecr.<region>.amazonaws.com/langfuse-dev/web:3` | 3000 | 単一タスク (desired_count=1) | Public |
+| Langfuse Worker | `<account>.dkr.ecr.<region>.amazonaws.com/langfuse-dev/worker:3` | 3030 | ECS Service (desired_count 可変) | Private |
+| ClickHouse | `<account>.dkr.ecr.<region>.amazonaws.com/langfuse-dev/clickhouse:24` | 8123 (HTTP), 9000 (TCP) | 固定 desired_count=1 | Private |
 
+- **コンテナイメージは事前に ECR に push が必要**（`scripts/push-images.sh` を参照）
 - Langfuse Web は Public Subnet に配置し、Public IP を自動割り当て（IP は動的）
 - Worker は ECS Service の `desired_count` を調整してスケール可能
 - ClickHouse はシングルインスタンス構成 (`CLICKHOUSE_CLUSTER_ENABLED=false`)
@@ -231,40 +234,46 @@ resource "aws_ecs_service" "clickhouse" {
 
 ```
 infra/
-├── main.tf              # provider, terraform settings
+├── main.tf              # provider, terraform settings, module calls
 ├── variables.tf         # 入力変数定義
+├── locals.tf            # ローカル値（VPC ID, subnet IDs 等）
 ├── outputs.tf           # 出力値定義
-├── ecs.tf               # ECS Cluster + 3 Services (web, worker, clickhouse)
-├── rds.tf               # RDS PostgreSQL
-├── elasticache.tf       # ElastiCache Redis
-├── s3.tf                # S3 Bucket + VPC Endpoint
-├── efs.tf               # EFS (ClickHouse 永続化)
+├── vpc.tf               # VPC（vpc_id が null の場合に自動作成）
+├── vpc_endpoints.tf     # VPC Endpoints (ECR, Logs, Secrets Manager)
 ├── security_groups.tf   # 全 Security Group 定義
 ├── iam.tf               # IAM Roles / Policies (ECS task role 等)
 ├── secrets.tf           # Secrets Manager (DB password, encryption keys 等)
-└── service_discovery.tf # Cloud Map (ClickHouse DNS)
+└── modules/
+    ├── langfuse/        # ECS Cluster, Web/Worker サービス, ElastiCache, S3
+    ├── clickhouse/      # ClickHouse ECS サービス, EFS, Service Discovery
+    └── rds/             # RDS PostgreSQL
 ```
 
 ### Key Variables
 
 | Variable | Type | Description |
 |---|---|---|
-| `vpc_id` | `string` | 既存 VPC ID |
-| `public_subnet_ids` | `list(string)` | Langfuse Web 配置用 Public Subnet IDs |
-| `private_subnet_ids` | `list(string)` | Worker / ClickHouse / RDS / ElastiCache 用 Private Subnet IDs |
+| `aws_region` | `string` | AWS リージョン |
+| `service_name` | `string` | リソース命名プレフィックス (default: `langfuse`) |
+| `user` | `string` | リソース識別用ユーザータグ |
+| `vpc_id` | `string` | 既存 VPC ID (null = 自動作成) |
+| `public_subnet_ids` | `list(string)` | Public Subnet IDs (vpc_id 指定時は必須) |
+| `private_subnet_ids` | `list(string)` | Private Subnet IDs (vpc_id 指定時は必須) |
+| `vpc_cidr` | `string` | 自動作成 VPC の CIDR (default: `10.0.0.0/16`) |
 | `allowed_cidrs` | `list(string)` | アクセス許可 CIDR リスト |
+| `langfuse_web_image` | `string` | Langfuse Web の ECR イメージ URL |
+| `langfuse_worker_image` | `string` | Langfuse Worker の ECR イメージ URL |
+| `clickhouse_image` | `string` | ClickHouse の ECR イメージ URL |
 | `db_instance_class` | `string` | RDS インスタンスクラス (default: `db.t4g.micro`) |
-| `db_name` | `string` | データベース名 (default: `langfuse`) |
+| `db_name` | `string` | データベース名 (default: `langfuse`, ハイフン不可) |
 | `cache_node_type` | `string` | ElastiCache ノードタイプ (default: `cache.t4g.micro`) |
-| `worker_desired_count` | `number` | Langfuse Worker タスク数 (default: `1`) |
 | `web_cpu` | `number` | Web タスク CPU (default: `1024` = 1 vCPU) |
 | `web_memory` | `number` | Web タスク メモリ (default: `2048` = 2 GB) |
+| `worker_desired_count` | `number` | Langfuse Worker タスク数 (default: `1`) |
 | `worker_cpu` | `number` | Worker タスク CPU (default: `1024`) |
 | `worker_memory` | `number` | Worker タスク メモリ (default: `2048`) |
 | `clickhouse_cpu` | `number` | ClickHouse タスク CPU (default: `2048` = 2 vCPU) |
 | `clickhouse_memory` | `number` | ClickHouse タスク メモリ (default: `4096` = 4 GB) |
-| `aws_region` | `string` | AWS リージョン |
-| `project_name` | `string` | リソース命名プレフィックス (default: `langfuse`) |
 
 ---
 
@@ -272,11 +281,15 @@ infra/
 
 | Output | Description |
 |---|---|
-| `langfuse_web_public_ip` | Langfuse Web の Public IP（動的、タスク再起動で変更） |
-| `langfuse_url` | Langfuse Web アクセス URL (`http://<public_ip>:3000`) |
+| `vpc_id` | VPC ID（作成または既存） |
+| `public_subnet_ids` | Public subnet IDs |
+| `private_subnet_ids` | Private subnet IDs |
+| `ecs_cluster_name` | ECS クラスター名 |
+| `langfuse_web_service_name` | Web サービス名（Public IP 取得に使用） |
 | `rds_endpoint` | RDS PostgreSQL エンドポイント |
 | `redis_endpoint` | ElastiCache Redis エンドポイント |
 | `s3_bucket_name` | S3 バケット名 |
+| `clickhouse_dns` | ClickHouse 内部 DNS 名 |
 
 ---
 

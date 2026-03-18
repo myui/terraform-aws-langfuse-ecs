@@ -8,10 +8,12 @@ Provisioned via Infrastructure as Code (IaC) using Terraform.
 ## Design Principles
 
 - No Kubernetes (ECS Fargate-based)
-- Use existing VPC
+- Auto-create VPC or use existing VPC
 - Access control via Security Group IP restrictions
 - HTTPS not required initially (can be added later)
 - No Load Balancer; Langfuse Web placed directly in Public Subnet (dynamic Public IP)
+- No NAT Gateway; use VPC Endpoints for AWS service access
+- Container images from ECR (must be pushed beforehand)
 - Prioritize simple configuration
 
 ---
@@ -23,12 +25,12 @@ Internet
   |
   |  SG: allowed_cidrs -> port 3000
   v
-+------------------- Existing VPC ---------------------+
++------------------- VPC (auto-created or existing) ---+
 |                                                      |
-|  Public Subnet (existing)                            |
+|  Public Subnet                                       |
 |  +- ECS Service: Langfuse Web (Public IP, single task)|
 |                                                      |
-|  Private Subnets (existing)                          |
+|  Private Subnets                                     |
 |  +- ECS Service: Langfuse Worker (scalable)          |
 |  +- ECS Service: ClickHouse     (fixed 1 task)       |
 |  |   +- EFS (data persistence)                       |
@@ -44,12 +46,13 @@ Internet
 
 ### Compute (ECS Fargate)
 
-| Service | Image | Port | Scaling | Subnet |
+| Service | Image (ECR) | Port | Scaling | Subnet |
 |---|---|---|---|---|
-| Langfuse Web | `langfuse/langfuse:3` | 3000 | Single task (desired_count=1) | Public |
-| Langfuse Worker | `langfuse/langfuse-worker:3` | 3030 | ECS Service (variable desired_count) | Private |
-| ClickHouse | `clickhouse/clickhouse-server` | 8123 (HTTP), 9000 (TCP) | Fixed desired_count=1 | Private |
+| Langfuse Web | `<account>.dkr.ecr.<region>.amazonaws.com/langfuse-dev/web:3` | 3000 | Single task (desired_count=1) | Public |
+| Langfuse Worker | `<account>.dkr.ecr.<region>.amazonaws.com/langfuse-dev/worker:3` | 3030 | ECS Service (variable desired_count) | Private |
+| ClickHouse | `<account>.dkr.ecr.<region>.amazonaws.com/langfuse-dev/clickhouse:24` | 8123 (HTTP), 9000 (TCP) | Fixed desired_count=1 | Private |
 
+- **Container images must be pushed to ECR beforehand** (see `scripts/push-images.sh`)
 - Langfuse Web is placed in Public Subnet with auto-assigned Public IP (IP is dynamic)
 - Worker can be scaled by adjusting ECS Service `desired_count`
 - ClickHouse runs as single instance configuration (`CLICKHOUSE_CLUSTER_ENABLED=false`)
@@ -231,40 +234,46 @@ resource "aws_ecs_service" "clickhouse" {
 
 ```
 infra/
-├── main.tf              # provider, terraform settings
+├── main.tf              # provider, terraform settings, module calls
 ├── variables.tf         # Input variable definitions
+├── locals.tf            # Local values (VPC ID, subnet IDs, etc.)
 ├── outputs.tf           # Output value definitions
-├── ecs.tf               # ECS Cluster + 3 Services (web, worker, clickhouse)
-├── rds.tf               # RDS PostgreSQL
-├── elasticache.tf       # ElastiCache Redis
-├── s3.tf                # S3 Bucket + VPC Endpoint
-├── efs.tf               # EFS (ClickHouse persistence)
+├── vpc.tf               # VPC (auto-created when vpc_id is null)
+├── vpc_endpoints.tf     # VPC Endpoints (ECR, Logs, Secrets Manager)
 ├── security_groups.tf   # All Security Group definitions
 ├── iam.tf               # IAM Roles / Policies (ECS task role, etc.)
 ├── secrets.tf           # Secrets Manager (DB password, encryption keys, etc.)
-└── service_discovery.tf # Cloud Map (ClickHouse DNS)
+└── modules/
+    ├── langfuse/        # ECS Cluster, Web/Worker services, ElastiCache, S3
+    ├── clickhouse/      # ClickHouse ECS service, EFS, Service Discovery
+    └── rds/             # RDS PostgreSQL
 ```
 
 ### Key Variables
 
 | Variable | Type | Description |
 |---|---|---|
-| `vpc_id` | `string` | Existing VPC ID |
-| `public_subnet_ids` | `list(string)` | Public Subnet IDs for Langfuse Web placement |
-| `private_subnet_ids` | `list(string)` | Private Subnet IDs for Worker / ClickHouse / RDS / ElastiCache |
+| `aws_region` | `string` | AWS region |
+| `service_name` | `string` | Resource naming prefix (default: `langfuse`) |
+| `user` | `string` | User tag for resource identification |
+| `vpc_id` | `string` | Existing VPC ID (null = auto-create) |
+| `public_subnet_ids` | `list(string)` | Public Subnet IDs (required if vpc_id set) |
+| `private_subnet_ids` | `list(string)` | Private Subnet IDs (required if vpc_id set) |
+| `vpc_cidr` | `string` | CIDR for auto-created VPC (default: `10.0.0.0/16`) |
 | `allowed_cidrs` | `list(string)` | Allowed CIDR list for access |
+| `langfuse_web_image` | `string` | ECR image URL for Langfuse Web |
+| `langfuse_worker_image` | `string` | ECR image URL for Langfuse Worker |
+| `clickhouse_image` | `string` | ECR image URL for ClickHouse |
 | `db_instance_class` | `string` | RDS instance class (default: `db.t4g.micro`) |
-| `db_name` | `string` | Database name (default: `langfuse`) |
+| `db_name` | `string` | Database name (default: `langfuse`, no hyphens allowed) |
 | `cache_node_type` | `string` | ElastiCache node type (default: `cache.t4g.micro`) |
-| `worker_desired_count` | `number` | Langfuse Worker task count (default: `1`) |
 | `web_cpu` | `number` | Web task CPU (default: `1024` = 1 vCPU) |
 | `web_memory` | `number` | Web task memory (default: `2048` = 2 GB) |
+| `worker_desired_count` | `number` | Langfuse Worker task count (default: `1`) |
 | `worker_cpu` | `number` | Worker task CPU (default: `1024`) |
 | `worker_memory` | `number` | Worker task memory (default: `2048`) |
 | `clickhouse_cpu` | `number` | ClickHouse task CPU (default: `2048` = 2 vCPU) |
 | `clickhouse_memory` | `number` | ClickHouse task memory (default: `4096` = 4 GB) |
-| `aws_region` | `string` | AWS region |
-| `project_name` | `string` | Resource naming prefix (default: `langfuse`) |
 
 ---
 
@@ -272,11 +281,15 @@ infra/
 
 | Output | Description |
 |---|---|
-| `langfuse_web_public_ip` | Langfuse Web Public IP (dynamic, changes on task restart) |
-| `langfuse_url` | Langfuse Web access URL (`http://<public_ip>:3000`) |
+| `vpc_id` | VPC ID (created or provided) |
+| `public_subnet_ids` | Public subnet IDs |
+| `private_subnet_ids` | Private subnet IDs |
+| `ecs_cluster_name` | ECS cluster name |
+| `langfuse_web_service_name` | Web service name (use to get Public IP) |
 | `rds_endpoint` | RDS PostgreSQL endpoint |
 | `redis_endpoint` | ElastiCache Redis endpoint |
 | `s3_bucket_name` | S3 bucket name |
+| `clickhouse_dns` | ClickHouse internal DNS name |
 
 ---
 
