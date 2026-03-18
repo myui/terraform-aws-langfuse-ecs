@@ -28,13 +28,13 @@ Internet
 |  Public Subnet (existing)                            |
 |  +- ECS Service: Langfuse Web (Public IP, single task)|
 |                                                      |
-|  Private Subnets (existing, with NAT Gateway)        |
+|  Private Subnets (existing)                          |
 |  +- ECS Service: Langfuse Worker (scalable)          |
 |  +- ECS Service: ClickHouse     (fixed 1 task)       |
 |  |   +- EFS (data persistence)                       |
 |  +- RDS PostgreSQL                                   |
 |  +- ElastiCache Redis                                |
-|  +- S3 VPC Endpoint (Gateway)                        |
+|  +- VPC Endpoints (ECR, Logs, Secrets Manager, S3)   |
 +------------------------------------------------------+
 ```
 
@@ -78,11 +78,39 @@ Internet
 |---|---|---|
 | Blob Storage | S3 | Event persistence, multimodal media, batch exports |
 
-- Accessed via VPC Gateway Endpoint (avoids NAT Gateway traffic costs)
+- Accessed via VPC Gateway Endpoint
+
+### VPC Endpoints (No NAT Gateway)
+
+Private subnets use VPC Endpoints instead of NAT Gateway for AWS service access:
+
+| Endpoint | Type | Purpose |
+|---|---|---|
+| ECR API | Interface | Container image metadata |
+| ECR DKR | Interface | Container image pull (Docker Registry) |
+| CloudWatch Logs | Interface | Log delivery from ECS tasks |
+| Secrets Manager | Interface | Secret retrieval for ECS tasks |
+| S3 | Gateway | Blob storage access (no additional cost) |
 
 ---
 
 ## Network & Security
+
+### Component Placement & Access Control
+
+| Component | Subnet | Public IP | Security Group Restrictions |
+|---|---|---|---|
+| **Langfuse Web** | Public | Yes (dynamic) | Only port 3000 from `allowed_cidrs` |
+| **Langfuse Worker** | Private | No | Only health check (3030) from Web |
+| **ClickHouse** | Private | No | Only 8123, 9000 from Web/Worker |
+| **RDS PostgreSQL** | Private | No (`publicly_accessible = false`) | Only 5432 from Web/Worker |
+| **ElastiCache Redis** | Private | No | Only 6379 from Web/Worker |
+| **EFS** | Private | No | Only 2049 from ClickHouse |
+
+**Security Design Principles:**
+- Only Langfuse Web is accessible from the internet, and access is restricted to specified IP ranges (`allowed_cidrs`)
+- All other components (Worker, ClickHouse, RDS, Redis, EFS) are placed in Private Subnets with no public accessibility
+- Inter-component communication is restricted via Security Groups, following the principle of least privilege
 
 ### Security Groups
 

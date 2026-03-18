@@ -28,13 +28,13 @@ Internet
 │  Public Subnet (既存)                                  │
 │  └─ ECS Service: Langfuse Web (Public IP, 単一タスク)  │
 │                                                        │
-│  Private Subnets (既存, NAT Gateway あり)              │
+│  Private Subnets (既存)                                │
 │  ├─ ECS Service: Langfuse Worker (スケール可能)        │
 │  ├─ ECS Service: ClickHouse     (固定1タスク)          │
 │  │   └─ EFS (データ永続化)                              │
 │  ├─ RDS PostgreSQL                                     │
 │  ├─ ElastiCache Redis                                  │
-│  └─ S3 VPC Endpoint (Gateway)                          │
+│  └─ VPC Endpoints (ECR, Logs, Secrets Manager, S3)     │
 └────────────────────────────────────────────────────────┘
 ```
 
@@ -78,11 +78,39 @@ Internet
 |---|---|---|
 | Blob Storage | S3 | イベント永続化、マルチモーダルメディア、バッチエクスポート |
 
-- VPC Gateway Endpoint 経由でアクセス (NAT Gateway 経由の通信コスト回避)
+- VPC Gateway Endpoint 経由でアクセス
+
+### VPC Endpoints（NAT Gateway 不要）
+
+Private Subnet から AWS サービスへのアクセスには NAT Gateway ではなく VPC Endpoints を使用:
+
+| Endpoint | タイプ | 用途 |
+|---|---|---|
+| ECR API | Interface | コンテナイメージメタデータ |
+| ECR DKR | Interface | コンテナイメージ Pull (Docker Registry) |
+| CloudWatch Logs | Interface | ECS タスクからのログ配信 |
+| Secrets Manager | Interface | ECS タスクのシークレット取得 |
+| S3 | Gateway | Blob ストレージアクセス（追加コストなし） |
 
 ---
 
 ## Network & Security
+
+### コンポーネント配置とアクセス制御
+
+| コンポーネント | Subnet | Public IP | Security Group 制限 |
+|---|---|---|---|
+| **Langfuse Web** | Public | Yes (動的) | `allowed_cidrs` から port 3000 のみ |
+| **Langfuse Worker** | Private | No | Web からの Health check (3030) のみ |
+| **ClickHouse** | Private | No | Web/Worker から 8123, 9000 のみ |
+| **RDS PostgreSQL** | Private | No (`publicly_accessible = false`) | Web/Worker から 5432 のみ |
+| **ElastiCache Redis** | Private | No | Web/Worker から 6379 のみ |
+| **EFS** | Private | No | ClickHouse から 2049 のみ |
+
+**セキュリティ設計の原則:**
+- インターネットからアクセス可能なのは Langfuse Web のみ。かつ、指定した IP 範囲 (`allowed_cidrs`) からのアクセスに制限
+- その他のコンポーネント (Worker, ClickHouse, RDS, Redis, EFS) はすべて Private Subnet に配置し、外部からのアクセスを遮断
+- コンポーネント間の通信は Security Group で必要最小限に制限（最小権限の原則）
 
 ### Security Groups
 
