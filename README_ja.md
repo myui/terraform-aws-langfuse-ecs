@@ -1,0 +1,273 @@
+# Terraform AWS Langfuse ECS
+
+AWS ECS Fargate 上に Langfuse v3 をセルフホスティングするための Terraform モジュール。
+
+## 概要
+
+このプロジェクトは、Langfuse v3 を AWS 上にシンプルかつ低コストでデプロイするための Terraform 構成を提供します。
+
+### 特徴
+
+- **Kubernetes 不要** - ECS Fargate ベースでシンプルな運用
+- **既存 VPC 利用** - 新規 VPC 作成不要
+- **セキュアなアクセス制御** - Security Group による IP 制限
+- **データ永続化** - ClickHouse データは EFS に永続化
+- **コスト最適化** - S3 Intelligent-Tiering、VPC Endpoint 経由のアクセス
+
+## アーキテクチャ
+
+### Langfuse コンポーネント構成
+
+```mermaid
+flowchart TB
+    subgraph Users["ユーザー"]
+        UI["UI / API / SDKs"]
+    end
+
+    subgraph VPC["AWS VPC"]
+        subgraph Public["Public Subnet"]
+            Web["Langfuse Web<br/>(ECS Fargate)"]
+        end
+
+        subgraph Private["Private Subnets"]
+            Worker["Langfuse Worker<br/>(ECS Fargate)"]
+
+            subgraph Storage["ストレージ層"]
+                Postgres[("RDS PostgreSQL<br/>(OLTP)")]
+                ClickHouse[("ClickHouse<br/>(OLAP)")]
+                Redis[("ElastiCache Redis<br/>(Cache/Queue)")]
+                S3[("S3<br/>(Blob Storage)")]
+                EFS[("EFS<br/>(ClickHouse Data)")]
+            end
+        end
+    end
+
+    UI -->|"port 3000"| Web
+    Web --> Postgres
+    Web --> ClickHouse
+    Web --> Redis
+    Web --> S3
+    Worker --> Postgres
+    Worker --> ClickHouse
+    Worker --> Redis
+    Worker --> S3
+    Redis -.->|"Queue"| Worker
+    ClickHouse --> EFS
+
+    style UI fill:#e1f5fe,stroke:#01579b,color:#01579b
+    style Web fill:#fff3e0,stroke:#e65100,color:#e65100
+    style Worker fill:#fff3e0,stroke:#e65100,color:#e65100
+    style Postgres fill:#e8f5e9,stroke:#2e7d32,color:#2e7d32
+    style ClickHouse fill:#fce4ec,stroke:#c2185b,color:#c2185b
+    style Redis fill:#fff8e1,stroke:#f57f17,color:#f57f17
+    style S3 fill:#e3f2fd,stroke:#1565c0,color:#1565c0
+    style EFS fill:#f3e5f5,stroke:#7b1fa2,color:#7b1fa2
+```
+
+### AWS インフラ構成
+
+```mermaid
+flowchart TB
+    subgraph Internet["Internet"]
+        Client["Client"]
+    end
+
+    subgraph VPC["Existing VPC"]
+        subgraph PublicSubnet["Public Subnet"]
+            WebSG{{"SG: allowed_cidrs:3000"}}
+            WebECS["ECS: Langfuse Web<br/>(Public IP)"]
+        end
+
+        subgraph PrivateSubnets["Private Subnets"]
+            WorkerECS["ECS: Langfuse Worker"]
+            CHECS["ECS: ClickHouse"]
+
+            RDS[("RDS PostgreSQL")]
+            ElastiCache[("ElastiCache Redis")]
+            EFSStorage[("EFS")]
+            S3Endpoint>"S3 VPC Endpoint"]
+        end
+
+        CloudMap(["Cloud Map<br/>(clickhouse.langfuse.local)"])
+    end
+
+    subgraph AWSServices["AWS Services"]
+        S3Bucket[("S3 Bucket")]
+        SecretsManager["Secrets Manager"]
+    end
+
+    Client -->|"IP制限"| WebSG --> WebECS
+    WebECS --> RDS
+    WebECS --> ElastiCache
+    WebECS -->|"Service Discovery"| CloudMap --> CHECS
+    WorkerECS --> RDS
+    WorkerECS --> ElastiCache
+    WorkerECS --> CloudMap
+    CHECS --> EFSStorage
+    WebECS --> S3Endpoint --> S3Bucket
+    WorkerECS --> S3Endpoint
+    WebECS -.-> SecretsManager
+    WorkerECS -.-> SecretsManager
+    CHECS -.-> SecretsManager
+
+    style Client fill:#e1f5fe,stroke:#01579b,color:#01579b
+    style WebSG fill:#ffebee,stroke:#c62828,color:#c62828
+    style WebECS fill:#fff3e0,stroke:#e65100,color:#e65100
+    style WorkerECS fill:#fff3e0,stroke:#e65100,color:#e65100
+    style CHECS fill:#fce4ec,stroke:#c2185b,color:#c2185b
+    style RDS fill:#e8f5e9,stroke:#2e7d32,color:#2e7d32
+    style ElastiCache fill:#fff8e1,stroke:#f57f17,color:#f57f17
+    style EFSStorage fill:#f3e5f5,stroke:#7b1fa2,color:#7b1fa2
+    style S3Endpoint fill:#e3f2fd,stroke:#1565c0,color:#1565c0
+    style S3Bucket fill:#e3f2fd,stroke:#1565c0,color:#1565c0
+    style CloudMap fill:#e0f2f1,stroke:#00695c,color:#00695c
+    style SecretsManager fill:#fbe9e7,stroke:#bf360c,color:#bf360c
+```
+
+詳細は [docs/architecture_ja.md](docs/architecture_ja.md) を参照してください。
+
+## 前提条件
+
+- Terraform >= 1.0
+- AWS CLI（認証設定済み）
+- 既存の VPC（Public Subnet、Private Subnet、NAT Gateway）
+
+## クイックスタート
+
+### 1. リポジトリをクローン
+
+```bash
+git clone https://github.com/myui/terraform-aws-langfuse-ecs.git
+cd terraform-aws-langfuse-ecs
+```
+
+### 2. tfvars ファイルを作成
+
+```bash
+cp tfvars/example.tfvars tfvars/dev.tfvars
+```
+
+`tfvars/dev.tfvars` を編集:
+
+```hcl
+# AWS Configuration
+aws_region = "ap-northeast-1"
+
+# Network Configuration (既存の VPC を使用)
+vpc_id             = "vpc-xxxxxxxxxxxxxxxxx"
+public_subnet_ids  = ["subnet-xxxxxxxxxxxxxxxxx"]
+private_subnet_ids = ["subnet-xxxxxxxxxxxxxxxxx", "subnet-yyyyyyyyyyyyyyyyy"]
+
+# Access Control (アクセスを許可する IP 範囲)
+allowed_cidrs = ["203.0.113.0/24"]
+```
+
+### 3. Terraform 実行
+
+```bash
+cd infra
+
+# 初期化
+terraform init
+
+# プラン確認
+terraform plan -var-file=../tfvars/dev.tfvars
+
+# デプロイ
+terraform apply -var-file=../tfvars/dev.tfvars
+```
+
+### 4. Public IP の確認
+
+デプロイ完了後、ECS タスクの Public IP を確認:
+
+```bash
+aws ecs list-tasks --cluster langfuse --service-name langfuse-web --query 'taskArns[0]' --output text | \
+xargs -I {} aws ecs describe-tasks --cluster langfuse --tasks {} --query 'tasks[0].attachments[0].details[?name==`networkInterfaceId`].value' --output text | \
+xargs -I {} aws ec2 describe-network-interfaces --network-interface-ids {} --query 'NetworkInterfaces[0].Association.PublicIp' --output text
+```
+
+### 5. Langfuse にアクセス
+
+ブラウザで `http://<public-ip>:3000` にアクセス。
+
+## 変数一覧
+
+| 変数 | 説明 | デフォルト |
+|------|------|------------|
+| `aws_region` | AWS リージョン | - |
+| `vpc_id` | 既存 VPC ID | - |
+| `public_subnet_ids` | Public Subnet IDs | - |
+| `private_subnet_ids` | Private Subnet IDs | - |
+| `allowed_cidrs` | アクセス許可 CIDR リスト | - |
+| `project_name` | リソース命名プレフィックス | `langfuse` |
+| `db_instance_class` | RDS インスタンスクラス | `db.t4g.micro` |
+| `db_multi_az` | RDS Multi-AZ 有効化 | `false` |
+| `cache_node_type` | ElastiCache ノードタイプ | `cache.t4g.micro` |
+| `web_cpu` | Web タスク CPU | `1024` |
+| `web_memory` | Web タスク メモリ (MB) | `2048` |
+| `worker_desired_count` | Worker タスク数 | `1` |
+| `worker_cpu` | Worker タスク CPU | `1024` |
+| `worker_memory` | Worker タスク メモリ (MB) | `2048` |
+| `clickhouse_cpu` | ClickHouse タスク CPU | `2048` |
+| `clickhouse_memory` | ClickHouse タスク メモリ (MB) | `4096` |
+
+## 出力
+
+| 出力 | 説明 |
+|------|------|
+| `ecs_cluster_name` | ECS クラスター名 |
+| `langfuse_web_service_name` | Web サービス名 |
+| `rds_endpoint` | RDS エンドポイント |
+| `redis_endpoint` | Redis エンドポイント |
+| `s3_bucket_name` | S3 バケット名 |
+| `clickhouse_dns` | ClickHouse 内部 DNS 名 |
+
+## リソース削除
+
+```bash
+cd infra
+terraform destroy -var-file=../tfvars/dev.tfvars
+```
+
+**注意**: RDS の `skip_final_snapshot = true` のため、削除時にスナップショットは作成されません。本番環境では変更を検討してください。
+
+## コスト見積もり（東京リージョン）
+
+最小構成での概算（月額）:
+
+| サービス | 構成 | 概算コスト |
+|----------|------|------------|
+| ECS Fargate | 3 タスク (4 vCPU, 8 GB) | ~$100 |
+| RDS PostgreSQL | db.t4g.micro | ~$15 |
+| ElastiCache Redis | cache.t4g.micro | ~$12 |
+| EFS | 10 GB | ~$3 |
+| S3 | 10 GB + Intelligent-Tiering | ~$1 |
+| **合計** | | **~$130/月** |
+
+※ データ転送量、CloudWatch ログ等は含まれていません。
+
+## セキュリティ考慮事項
+
+- すべての機密情報は AWS Secrets Manager で管理
+- S3 はパブリックアクセス完全ブロック + 暗号化
+- RDS/ElastiCache は Private Subnet に配置
+- EFS は転送時暗号化有効
+- Security Group で最小権限アクセス
+
+## 今後の拡張
+
+- HTTPS 対応（ALB + ACM）
+- 固定 IP（NLB + Elastic IP）
+- カスタムドメイン（Route53）
+- Auto Scaling
+- Terraform remote state（S3 + DynamoDB）
+
+## ライセンス
+
+Apache License 2.0
+
+## 関連リンク
+
+- [Langfuse 公式ドキュメント](https://langfuse.com/docs)
+- [Langfuse Self-Hosting Guide](https://langfuse.com/docs/deployment/self-host)
