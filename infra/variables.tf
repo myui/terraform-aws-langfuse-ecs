@@ -14,19 +14,30 @@ variable "user" {
   type        = string
 }
 
+# VPC Configuration
+# If vpc_id is null, a new VPC will be created automatically
 variable "vpc_id" {
-  description = "Existing VPC ID"
+  description = "Existing VPC ID. If null, a new VPC will be created."
   type        = string
+  default     = null
 }
 
 variable "public_subnet_ids" {
-  description = "Public Subnet IDs for Langfuse Web placement"
+  description = "Public Subnet IDs for Langfuse Web. Required if vpc_id is provided."
   type        = list(string)
+  default     = null
 }
 
 variable "private_subnet_ids" {
-  description = "Private Subnet IDs for Worker / ClickHouse / RDS / ElastiCache"
+  description = "Private Subnet IDs for Worker/ClickHouse/RDS/ElastiCache. Required if vpc_id is provided."
   type        = list(string)
+  default     = null
+}
+
+variable "vpc_cidr" {
+  description = "CIDR block for new VPC (used only when vpc_id is null)"
+  type        = string
+  default     = "10.0.0.0/16"
 }
 
 variable "allowed_cidrs" {
@@ -105,23 +116,25 @@ variable "clickhouse_memory" {
   default     = 4096
 }
 
-# Langfuse
+# Container Images (ECR)
+# ECR repositories must be created beforehand and images pushed before deployment.
+# See scripts/push-images.sh for helper script.
 variable "langfuse_web_image" {
-  description = "Langfuse Web container image"
+  description = "Langfuse Web container image (ECR URL with tag)"
   type        = string
-  default     = "langfuse/langfuse:3"
+  # Example: "123456789012.dkr.ecr.ap-northeast-1.amazonaws.com/langfuse-web:3"
 }
 
 variable "langfuse_worker_image" {
-  description = "Langfuse Worker container image"
+  description = "Langfuse Worker container image (ECR URL with tag)"
   type        = string
-  default     = "langfuse/langfuse-worker:3"
+  # Example: "123456789012.dkr.ecr.ap-northeast-1.amazonaws.com/langfuse-worker:3"
 }
 
 variable "clickhouse_image" {
-  description = "ClickHouse container image"
+  description = "ClickHouse container image (ECR URL with tag)"
   type        = string
-  default     = "clickhouse/clickhouse-server:24"
+  # Example: "123456789012.dkr.ecr.ap-northeast-1.amazonaws.com/clickhouse:24"
 }
 
 variable "nextauth_url" {

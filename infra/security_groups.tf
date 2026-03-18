@@ -15,7 +15,7 @@
 resource "aws_security_group" "web" {
   name        = "${var.service_name}-web"
   description = "Security group for Langfuse Web"
-  vpc_id      = var.vpc_id
+  vpc_id      = local.vpc_id
 
   # Ingress: Allow access to Langfuse Web UI/API from specified IP ranges
   # Restrict allowed_cidrs to your office/VPN IPs for security
@@ -57,7 +57,7 @@ resource "aws_security_group" "web" {
 resource "aws_security_group" "worker" {
   name        = "${var.service_name}-worker"
   description = "Security group for Langfuse Worker"
-  vpc_id      = var.vpc_id
+  vpc_id      = local.vpc_id
 
   # Ingress: Health check from Web service only
   # Worker does not need external access - it's an internal background processor
@@ -100,7 +100,7 @@ resource "aws_security_group" "worker" {
 resource "aws_security_group" "clickhouse" {
   name        = "${var.service_name}-clickhouse"
   description = "Security group for ClickHouse"
-  vpc_id      = var.vpc_id
+  vpc_id      = local.vpc_id
 
   # Ingress: HTTP interface for analytics queries
   # Used by Web (dashboard queries) and Worker (data aggregation)
@@ -153,7 +153,7 @@ resource "aws_security_group" "clickhouse" {
 resource "aws_security_group" "rds" {
   name        = "${var.service_name}-rds"
   description = "Security group for RDS PostgreSQL"
-  vpc_id      = var.vpc_id
+  vpc_id      = local.vpc_id
 
   # Ingress: PostgreSQL access from Langfuse services only
   # No direct external access - all queries go through Web/Worker
@@ -188,7 +188,7 @@ resource "aws_security_group" "rds" {
 resource "aws_security_group" "efs" {
   name        = "${var.service_name}-efs"
   description = "Security group for EFS"
-  vpc_id      = var.vpc_id
+  vpc_id      = local.vpc_id
 
   # Ingress: NFS access from ClickHouse only
   # EFS stores ClickHouse data for persistence across Fargate task restarts

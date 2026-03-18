@@ -33,7 +33,7 @@ module "rds" {
   source = "./modules/rds"
 
   service_name      = var.service_name
-  subnet_ids        = var.private_subnet_ids
+  subnet_ids        = local.private_subnet_ids
   security_group_id = aws_security_group.rds.id
   instance_class    = var.db_instance_class
   db_name           = var.db_name
@@ -46,9 +46,9 @@ module "langfuse" {
 
   service_name             = var.service_name
   aws_region               = var.aws_region
-  vpc_id                   = var.vpc_id
-  public_subnet_ids        = var.public_subnet_ids
-  private_subnet_ids       = var.private_subnet_ids
+  vpc_id                   = local.vpc_id
+  public_subnet_ids        = local.public_subnet_ids
+  private_subnet_ids       = local.private_subnet_ids
   web_security_group_id    = aws_security_group.web.id
   worker_security_group_id = aws_security_group.worker.id
   execution_role_arn       = aws_iam_role.ecs_task_execution.arn
@@ -77,8 +77,8 @@ module "clickhouse" {
   source = "./modules/clickhouse"
 
   service_name            = var.service_name
-  vpc_id                  = var.vpc_id
-  private_subnet_ids      = var.private_subnet_ids
+  vpc_id                  = local.vpc_id
+  private_subnet_ids      = local.private_subnet_ids
   security_group_id       = aws_security_group.clickhouse.id
   efs_security_group_id   = aws_security_group.efs.id
   ecs_cluster_id          = module.langfuse.cluster_id

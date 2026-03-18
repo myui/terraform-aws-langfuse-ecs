@@ -1,3 +1,19 @@
+# VPC outputs
+output "vpc_id" {
+  description = "VPC ID (created or provided)"
+  value       = local.vpc_id
+}
+
+output "public_subnet_ids" {
+  description = "Public subnet IDs"
+  value       = local.public_subnet_ids
+}
+
+output "private_subnet_ids" {
+  description = "Private subnet IDs"
+  value       = local.private_subnet_ids
+}
+
 output "ecs_cluster_name" {
   description = "ECS cluster name"
   value       = module.langfuse.cluster_name
