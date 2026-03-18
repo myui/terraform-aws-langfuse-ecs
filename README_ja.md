@@ -9,7 +9,7 @@ AWS ECS Fargate 上に Langfuse v3 をセルフホスティングするための
 ### 特徴
 
 - **Kubernetes 不要** - ECS Fargate ベースでシンプルな運用
-- **既存 VPC 利用** - 新規 VPC 作成不要
+- **VPC 自動作成または既存 VPC 利用** - 柔軟なネットワーク構成
 - **セキュアなアクセス制御** - Security Group による IP 制限
 - **データ永続化** - ClickHouse データは EFS に永続化
 - **コスト最適化** - S3 Intelligent-Tiering、VPC Endpoint 経由のアクセス
@@ -130,7 +130,9 @@ flowchart TB
 
 - Terraform >= 1.0
 - AWS CLI（認証設定済み）
-- 既存の VPC（Public Subnet、Private Subnet、NAT Gateway）
+- Docker（イメージのECRへのpush用）
+- ECR リポジトリ（事前に作成が必要）
+- 既存の VPC（オプション）- 指定しない場合は自動作成
 
 ## クイックスタート
 
@@ -149,20 +151,59 @@ cp tfvars/example.tfvars tfvars/dev.tfvars
 
 `tfvars/dev.tfvars` を編集:
 
+### 3. ECR リポジトリを作成（Terraform 外で事前に作成）
+
+```bash
+# ECR リポジトリを作成
+aws ecr create-repository --repository-name langfuse-dev/web --tags Key=user,Value=YOUR_NAME
+aws ecr create-repository --repository-name langfuse-dev/worker --tags Key=user,Value=YOUR_NAME
+aws ecr create-repository --repository-name langfuse-dev/clickhouse --tags Key=user,Value=YOUR_NAME
+```
+
+### 4. コンテナイメージを ECR に push
+
+```bash
+# スクリプトを使用してイメージを push
+./scripts/push-images.sh <aws_account_id> <aws_region> langfuse-dev
+
+# 例:
+./scripts/push-images.sh 123456789012 ap-northeast-1 langfuse-dev
+```
+
+このスクリプトは以下を実行します:
+- Docker Hub から `langfuse/langfuse:3`, `langfuse/langfuse-worker:3`, `clickhouse/clickhouse-server:24` を pull
+- ECR にログイン
+- イメージを ECR に push
+
+### 5. tfvars ファイルを編集
+
+`tfvars/dev.tfvars` を編集:
+
 ```hcl
 # AWS Configuration
-aws_region = "ap-northeast-1"
+aws_region   = "ap-northeast-1"
+service_name = "langfuse"
+user         = "your-name"
 
-# Network Configuration (既存の VPC を使用)
-vpc_id             = "vpc-xxxxxxxxxxxxxxxxx"
-public_subnet_ids  = ["subnet-xxxxxxxxxxxxxxxxx"]
-private_subnet_ids = ["subnet-xxxxxxxxxxxxxxxxx", "subnet-yyyyyyyyyyyyyyyyy"]
+# Container Images (ECR URLs)
+langfuse_web_image    = "123456789012.dkr.ecr.ap-northeast-1.amazonaws.com/langfuse-dev/web:3"
+langfuse_worker_image = "123456789012.dkr.ecr.ap-northeast-1.amazonaws.com/langfuse-dev/worker:3"
+clickhouse_image      = "123456789012.dkr.ecr.ap-northeast-1.amazonaws.com/langfuse-dev/clickhouse:24"
+
+# Network Configuration
+# オプション A: VPC を自動作成
+vpc_cidr = "10.0.0.0/16"
+
+# オプション B: 既存の VPC を使用
+# vpc_id             = "vpc-xxxxxxxxxxxxxxxxx"
+# public_subnet_ids  = ["subnet-xxxxxxxxxxxxxxxxx"]
+# private_subnet_ids = ["subnet-xxxxxxxxxxxxxxxxx", "subnet-yyyyyyyyyyyyyyyyy"]
 
 # Access Control (アクセスを許可する IP 範囲)
 allowed_cidrs = ["203.0.113.0/24"]
 ```
 
-### 3. Terraform 実行
+### 6. Terraform 実行
 
 ```bash
 cd infra
@@ -177,7 +218,7 @@ terraform plan -var-file=../tfvars/dev.tfvars
 terraform apply -var-file=../tfvars/dev.tfvars
 ```
 
-### 4. Public IP の確認
+### 7. Public IP の確認
 
 デプロイ完了後、ECS タスクの Public IP を確認:
 
@@ -187,7 +228,7 @@ xargs -I {} aws ecs describe-tasks --cluster langfuse --tasks {} --query 'tasks[
 xargs -I {} aws ec2 describe-network-interfaces --network-interface-ids {} --query 'NetworkInterfaces[0].Association.PublicIp' --output text
 ```
 
-### 5. Langfuse にアクセス
+### 8. Langfuse にアクセス
 
 ブラウザで `http://<public-ip>:3000` にアクセス。
 
@@ -196,11 +237,13 @@ xargs -I {} aws ec2 describe-network-interfaces --network-interface-ids {} --que
 | 変数 | 説明 | デフォルト |
 |------|------|------------|
 | `aws_region` | AWS リージョン | - |
-| `vpc_id` | 既存 VPC ID | - |
-| `public_subnet_ids` | Public Subnet IDs | - |
-| `private_subnet_ids` | Private Subnet IDs | - |
+| `service_name` | リソース命名プレフィックス・タグ | `langfuse` |
+| `user` | リソース識別用ユーザータグ | - |
+| `vpc_id` | 既存 VPC ID（null の場合は自動作成） | `null` |
+| `public_subnet_ids` | Public Subnet IDs（vpc_id 指定時は必須） | `null` |
+| `private_subnet_ids` | Private Subnet IDs（vpc_id 指定時は必須） | `null` |
+| `vpc_cidr` | 新規 VPC の CIDR（VPC 自動作成時のみ使用） | `10.0.0.0/16` |
 | `allowed_cidrs` | アクセス許可 CIDR リスト | - |
-| `project_name` | リソース命名プレフィックス | `langfuse` |
 | `db_instance_class` | RDS インスタンスクラス | `db.t4g.micro` |
 | `db_multi_az` | RDS Multi-AZ 有効化 | `false` |
 | `cache_node_type` | ElastiCache ノードタイプ | `cache.t4g.micro` |
@@ -216,6 +259,9 @@ xargs -I {} aws ec2 describe-network-interfaces --network-interface-ids {} --que
 
 | 出力 | 説明 |
 |------|------|
+| `vpc_id` | VPC ID（作成または既存） |
+| `public_subnet_ids` | Public Subnet IDs |
+| `private_subnet_ids` | Private Subnet IDs |
 | `ecs_cluster_name` | ECS クラスター名 |
 | `langfuse_web_service_name` | Web サービス名 |
 | `rds_endpoint` | RDS エンドポイント |

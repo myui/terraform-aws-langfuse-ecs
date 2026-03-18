@@ -9,7 +9,7 @@ This project provides a Terraform configuration to deploy Langfuse v3 on AWS in 
 ### Features
 
 - **No Kubernetes required** - Simple operation with ECS Fargate
-- **Use existing VPC** - No need to create a new VPC
+- **Auto-create VPC or use existing** - Flexible network configuration
 - **Secure access control** - IP restriction via Security Groups
 - **Data persistence** - ClickHouse data persisted on EFS
 - **Cost optimization** - S3 Intelligent-Tiering, access via VPC Endpoint
@@ -130,7 +130,9 @@ For details, see [docs/architecture.md](docs/architecture.md).
 
 - Terraform >= 1.0
 - AWS CLI (configured with credentials)
-- Existing VPC (with Public Subnet, Private Subnets, NAT Gateway)
+- Docker (for pushing images to ECR)
+- ECR repositories (must be created beforehand)
+- Existing VPC (optional) - auto-created if not specified
 
 ## Quick Start
 
@@ -149,20 +151,59 @@ cp tfvars/example.tfvars tfvars/dev.tfvars
 
 Edit `tfvars/dev.tfvars`:
 
+### 3. Create ECR repositories (outside Terraform)
+
+```bash
+# Create ECR repositories
+aws ecr create-repository --repository-name langfuse-dev/web --tags Key=user,Value=YOUR_NAME
+aws ecr create-repository --repository-name langfuse-dev/worker --tags Key=user,Value=YOUR_NAME
+aws ecr create-repository --repository-name langfuse-dev/clickhouse --tags Key=user,Value=YOUR_NAME
+```
+
+### 4. Push container images to ECR
+
+```bash
+# Use the script to push images
+./scripts/push-images.sh <aws_account_id> <aws_region> langfuse-dev
+
+# Example:
+./scripts/push-images.sh 123456789012 ap-northeast-1 langfuse-dev
+```
+
+This script will:
+- Pull `langfuse/langfuse:3`, `langfuse/langfuse-worker:3`, `clickhouse/clickhouse-server:24` from Docker Hub
+- Login to ECR
+- Push images to ECR
+
+### 5. Edit tfvars file
+
+Edit `tfvars/dev.tfvars`:
+
 ```hcl
 # AWS Configuration
-aws_region = "ap-northeast-1"
+aws_region   = "ap-northeast-1"
+service_name = "langfuse"
+user         = "your-name"
 
-# Network Configuration (use your existing VPC)
-vpc_id             = "vpc-xxxxxxxxxxxxxxxxx"
-public_subnet_ids  = ["subnet-xxxxxxxxxxxxxxxxx"]
-private_subnet_ids = ["subnet-xxxxxxxxxxxxxxxxx", "subnet-yyyyyyyyyyyyyyyyy"]
+# Container Images (ECR URLs)
+langfuse_web_image    = "123456789012.dkr.ecr.ap-northeast-1.amazonaws.com/langfuse-dev/web:3"
+langfuse_worker_image = "123456789012.dkr.ecr.ap-northeast-1.amazonaws.com/langfuse-dev/worker:3"
+clickhouse_image      = "123456789012.dkr.ecr.ap-northeast-1.amazonaws.com/langfuse-dev/clickhouse:24"
+
+# Network Configuration
+# Option A: Auto-create VPC
+vpc_cidr = "10.0.0.0/16"
+
+# Option B: Use existing VPC
+# vpc_id             = "vpc-xxxxxxxxxxxxxxxxx"
+# public_subnet_ids  = ["subnet-xxxxxxxxxxxxxxxxx"]
+# private_subnet_ids = ["subnet-xxxxxxxxxxxxxxxxx", "subnet-yyyyyyyyyyyyyyyyy"]
 
 # Access Control (IP ranges allowed to access)
 allowed_cidrs = ["203.0.113.0/24"]
 ```
 
-### 3. Run Terraform
+### 6. Run Terraform
 
 ```bash
 cd infra
@@ -177,7 +218,7 @@ terraform plan -var-file=../tfvars/dev.tfvars
 terraform apply -var-file=../tfvars/dev.tfvars
 ```
 
-### 4. Get Public IP
+### 7. Get Public IP
 
 After deployment, get the ECS task's Public IP:
 
@@ -187,7 +228,7 @@ xargs -I {} aws ecs describe-tasks --cluster langfuse --tasks {} --query 'tasks[
 xargs -I {} aws ec2 describe-network-interfaces --network-interface-ids {} --query 'NetworkInterfaces[0].Association.PublicIp' --output text
 ```
 
-### 5. Access Langfuse
+### 8. Access Langfuse
 
 Open `http://<public-ip>:3000` in your browser.
 
@@ -196,11 +237,13 @@ Open `http://<public-ip>:3000` in your browser.
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `aws_region` | AWS region | - |
-| `vpc_id` | Existing VPC ID | - |
-| `public_subnet_ids` | Public Subnet IDs | - |
-| `private_subnet_ids` | Private Subnet IDs | - |
+| `service_name` | Resource naming prefix and tag | `langfuse` |
+| `user` | User tag for resource identification | - |
+| `vpc_id` | Existing VPC ID (auto-created if null) | `null` |
+| `public_subnet_ids` | Public Subnet IDs (required if vpc_id specified) | `null` |
+| `private_subnet_ids` | Private Subnet IDs (required if vpc_id specified) | `null` |
+| `vpc_cidr` | CIDR for new VPC (only used when auto-creating) | `10.0.0.0/16` |
 | `allowed_cidrs` | Allowed CIDR list for access | - |
-| `project_name` | Resource naming prefix | `langfuse` |
 | `db_instance_class` | RDS instance class | `db.t4g.micro` |
 | `db_multi_az` | Enable RDS Multi-AZ | `false` |
 | `cache_node_type` | ElastiCache node type | `cache.t4g.micro` |
@@ -216,6 +259,9 @@ Open `http://<public-ip>:3000` in your browser.
 
 | Output | Description |
 |--------|-------------|
+| `vpc_id` | VPC ID (created or existing) |
+| `public_subnet_ids` | Public Subnet IDs |
+| `private_subnet_ids` | Private Subnet IDs |
 | `ecs_cluster_name` | ECS cluster name |
 | `langfuse_web_service_name` | Web service name |
 | `rds_endpoint` | RDS endpoint |
