@@ -142,19 +142,75 @@ Private subnets use VPC Endpoints instead of NAT Gateway for AWS service access:
 
 ### Security Groups
 
-| SG Name | Inbound Rule | Source | Description |
-|---|---|---|---|
-| `sg-web` | TCP 3000 | `var.allowed_cidrs` | External access restriction |
-| `sg-worker` | TCP 3030 | sg-web | Health check |
-| `sg-clickhouse` | TCP 8123, 9000 | sg-web, sg-worker | ClickHouse access |
-| `sg-rds` | TCP 5432 | sg-web, sg-worker | PostgreSQL access |
-| `sg-redis` | TCP 6379 | sg-web, sg-worker | Redis access |
-| `sg-efs` | TCP 2049 | sg-clickhouse | EFS mount |
+#### Security Group Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                           Internet                                   │
+└──────────────────────────────┬──────────────────────────────────────┘
+                               │
+                        ┌──────▼──────┐
+                        │   ALB SG    │  443/tcp, 80/tcp ← allowed_cidrs
+                        │  (Public)   │
+                        └──────┬──────┘
+                               │ 3000/tcp
+                  ┌────────────▼────────────┐
+                  │        Web SG           │  With ALB: from ALB only
+                  │   (Private w/ ALB)      │  Without ALB: from allowed_cidrs
+                  └────────────┬────────────┘
+                               │
+         ┌─────────────────────┼─────────────────────┐
+         │                     │                     │
+   ┌─────▼─────┐        ┌──────▼──────┐       ┌──────▼──────┐
+   │ Worker SG │        │ ClickHouse  │       │  Redis SG   │
+   │ 3030/tcp  │        │  SG         │       │  6379/tcp   │
+   │ ← Web     │        │ 8123,9000   │       │ ← Web/Worker│
+   └─────┬─────┘        │ ← Web/Worker│       └─────────────┘
+         │              └──────┬──────┘
+         │                     │
+         │              ┌──────▼──────┐
+         │              │   EFS SG    │
+         │              │  2049/tcp   │
+         │              │ ← ClickHouse│
+         │              └─────────────┘
+         │
+   ┌─────▼─────┐
+   │  RDS SG   │  5432/tcp ← Web/Worker only
+   └───────────┘
+```
+
+#### Security Group Rules
+
+| SG Name | Inbound Rule | Source | Egress | Description |
+|---|---|---|---|---|
+| `sg-alb` | TCP 443, 80 | `var.allowed_cidrs` | All | ALB for HTTPS termination |
+| `sg-web` | TCP 3000 | sg-alb (with ALB) or `var.allowed_cidrs` (without ALB) | All | Langfuse Web application |
+| `sg-worker` | TCP 3030 | sg-web | All | Worker health check endpoint |
+| `sg-clickhouse` | TCP 8123, 9000 | sg-web, sg-worker | All | ClickHouse HTTP and native protocols |
+| `sg-rds` | TCP 5432 | sg-web, sg-worker | None | PostgreSQL (no egress needed) |
+| `sg-redis` | TCP 6379 | sg-web, sg-worker | None | Redis cache and queue |
+| `sg-efs` | TCP 2049 | sg-clickhouse | None | EFS mount for ClickHouse data |
+| `sg-vpc-endpoints` | TCP 443 | VPC CIDR | None | VPC Endpoints (ECR, Logs, Secrets Manager) |
+
+#### Security Design Notes
+
+- **ALB Security Group**: Only created when `enable_alb = true`. Restricts access to specified IP ranges.
+- **Web Security Group**: When ALB is enabled, direct access from `allowed_cidrs` is disabled. Traffic must go through ALB.
+- **RDS Security Group**: No egress rules defined (RDS managed service does not require outbound connectivity).
+- **Principle of Least Privilege**: Each component can only communicate with the specific services it needs.
 
 ### Network Flow
 
 ```
-[Client] -> Langfuse Web (Public IP, Public Subnet, port 3000)
+With ALB:
+[Client] -> ALB (HTTPS:443) -> Langfuse Web (HTTP:3000, Private Subnet)
+                                   -> RDS PostgreSQL (Private Subnet)
+                                   -> ElastiCache Redis (Private Subnet)
+                                   -> ClickHouse ECS (Private Subnet)
+                                   -> S3 (VPC Endpoint)
+
+Without ALB:
+[Client] -> Langfuse Web (HTTP:3000, Public IP, Public Subnet)
                 -> RDS PostgreSQL (Private Subnet)
                 -> ElastiCache Redis (Private Subnet)
                 -> ClickHouse ECS (Private Subnet)
@@ -299,8 +355,10 @@ infra/
 | `worker_memory` | `number` | Worker task memory (default: `2048`) |
 | `clickhouse_cpu` | `number` | ClickHouse task CPU (default: `2048` = 2 vCPU) |
 | `clickhouse_memory` | `number` | ClickHouse task memory (default: `4096` = 4 GB) |
-| `enable_alb` | `bool` | Enable ALB for HTTPS access (default: `false`) |
-| `certificate_arn` | `string` | ACM certificate ARN for HTTPS (required if enable_alb = true) |
+| `enable_alb` | `bool` | Enable ALB for HTTPS access (default: `true`) |
+| `certificate_arn` | `string` | ACM certificate ARN for HTTPS. If empty, self-signed certificate is used. |
+| `custom_domain` | `string` | Custom domain for Langfuse (e.g., `langfuse.example.com`). Optional. |
+| `route53_zone_id` | `string` | Route53 hosted zone ID. Required when custom_domain is set. |
 
 ---
 
@@ -322,18 +380,30 @@ infra/
 
 ---
 
-## ALB Configuration (Optional)
+## ALB Configuration (Default: Enabled)
 
-### Option A: ALB with HTTP only (no custom domain required)
+ALB is enabled by default (`enable_alb = true`). It provides HTTPS access with automatic certificate management.
+
+### Certificate Options
+
+| Configuration | Certificate | Access URL |
+|---|---|---|
+| Default (no `certificate_arn`) | Self-signed (auto-generated) | `https://<alb-dns-name>` (browser warning) |
+| With `certificate_arn` | ACM certificate | `https://<alb-dns-name>` or custom domain |
+| With `custom_domain` + `route53_zone_id` | ACM certificate | `https://langfuse.example.com` |
+
+### Option A: Self-signed certificate (default, quickest setup)
 
 ```hcl
-enable_alb   = true
-nextauth_url = "http://<alb-dns-name>"  # Set after deployment
+enable_alb = true
+# certificate_arn not set - self-signed certificate will be generated
 ```
 
-Access via: `http://<alb-dns-name>`
+Access via: `https://<alb-dns-name>` (browser will show security warning)
 
-### Option B: ALB with HTTPS (custom domain required)
+**Note**: Self-signed certificates are suitable for development/testing. For production, use ACM certificate with a custom domain.
+
+### Option B: ACM certificate (recommended for production)
 
 1. **Create ACM certificate**:
    ```bash
@@ -343,7 +413,7 @@ Access via: `http://<alb-dns-name>`
      --region us-east-1
    ```
 
-2. **Validate certificate** via DNS
+2. **Validate certificate** via DNS (add CNAME record)
 
 3. **Configure tfvars**:
    ```hcl
@@ -354,11 +424,25 @@ Access via: `http://<alb-dns-name>`
 
 4. **Apply Terraform** and configure DNS to point to ALB
 
+### Option C: Custom domain with Route53 (fully automated DNS)
+
+```hcl
+enable_alb      = true
+certificate_arn = "arn:aws:acm:us-east-1:123456789012:certificate/xxx"
+custom_domain   = "langfuse.example.com"
+route53_zone_id = "Z1234567890ABC"
+nextauth_url    = "https://langfuse.example.com"
+```
+
+Terraform will automatically create an A record alias in Route53.
+
+### ALB Behavior
+
 When ALB is enabled:
 - Langfuse Web moves to Private Subnet (no public IP)
-- With certificate: HTTP:80 redirects to HTTPS:443
-- Without certificate: HTTP:80 only
-- Traffic: Internet → ALB → ECS (HTTP:3000)
+- HTTPS:443 is always enabled (ACM or self-signed certificate)
+- HTTP:80 redirects to HTTPS:443
+- Traffic flow: Internet → ALB (HTTPS) → ECS (HTTP:3000)
 
 ---
 

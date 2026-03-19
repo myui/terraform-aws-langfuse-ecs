@@ -2,11 +2,14 @@
 # Security Group for Langfuse Web
 # =============================================================================
 # Langfuse Web is the main application server that serves the UI and API.
-# It runs in a public subnet with a dynamic public IP (no load balancer).
 #
-# Ingress:
-#   - Port 3000 (TCP): Web UI and API access from allowed CIDRs only
-#     This is the main entry point for users accessing Langfuse
+# When ALB is enabled:
+#   - Web runs in private subnet, accessed only via ALB
+#   - Ingress from ALB is added by aws_security_group_rule in alb.tf
+#
+# When ALB is disabled:
+#   - Web runs in public subnet with public IP
+#   - Direct access from allowed CIDRs on port 3000
 #
 # Egress:
 #   - All traffic: Required for external API calls (LLM providers, etc.),
@@ -17,14 +20,17 @@ resource "aws_security_group" "web" {
   description = "Security group for Langfuse Web"
   vpc_id      = local.vpc_id
 
-  # Ingress: Allow access to Langfuse Web UI/API from specified IP ranges
-  # Restrict allowed_cidrs to your office/VPN IPs for security
-  ingress {
-    description = "Langfuse Web from allowed CIDRs"
-    from_port   = 3000
-    to_port     = 3000
-    protocol    = "tcp"
-    cidr_blocks = var.allowed_cidrs
+  # Ingress: Direct access only when ALB is disabled
+  # When ALB is enabled, traffic comes from ALB (rule added in alb.tf)
+  dynamic "ingress" {
+    for_each = var.enable_alb ? [] : [1]
+    content {
+      description = "Langfuse Web from allowed CIDRs (no ALB mode)"
+      from_port   = 3000
+      to_port     = 3000
+      protocol    = "tcp"
+      cidr_blocks = var.allowed_cidrs
+    }
   }
 
   # Egress: Allow all outbound traffic
@@ -165,7 +171,8 @@ resource "aws_security_group" "rds" {
     security_groups = [aws_security_group.web.id, aws_security_group.worker.id]
   }
 
-  # No egress rules: RDS managed service handles its own outbound connectivity
+  # Note: No egress rules defined. AWS creates default allow-all egress,
+  # but RDS managed service does not require outbound connectivity for normal operation.
 
   tags = {
     Name = "${var.service_name}-rds"
