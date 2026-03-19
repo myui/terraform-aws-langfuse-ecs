@@ -274,6 +274,41 @@ xargs -I {} aws ec2 describe-network-interfaces --region $REGION --network-inter
 | `s3_bucket_name` | S3 バケット名 |
 | `clickhouse_dns` | ClickHouse 内部 DNS 名 |
 
+## リモート State 管理（オプション）
+
+Terraform state を S3 に保存し、ネイティブの state ロック機能を使用（Terraform >= 1.10）。
+
+### 1. State 用 S3 バケットを作成
+
+```bash
+cd bootstrap
+terraform init
+terraform apply -var="bucket_name=langfuse-infra-tf-state" -var="aws_region=us-east-1" -var="user=your-name"
+```
+
+### 2. Backend を設定
+
+`infra/backend.tf` を編集し、backend ブロックのコメントを解除:
+
+```hcl
+terraform {
+  backend "s3" {
+    bucket       = "langfuse-infra-tf-state"
+    key          = "langfuse/terraform.tfstate"
+    region       = "us-east-1"
+    use_lockfile = true  # ネイティブ S3 state ロック
+    encrypt      = true
+  }
+}
+```
+
+### 3. State を移行
+
+```bash
+cd infra
+terraform init -migrate-state
+```
+
 ## リソース削除
 
 ```bash

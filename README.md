@@ -274,6 +274,41 @@ Open `http://<public-ip>:3000` in your browser.
 | `s3_bucket_name` | S3 bucket name |
 | `clickhouse_dns` | ClickHouse internal DNS name |
 
+## Remote State Management (Optional)
+
+Store Terraform state in S3 with native state locking (Terraform >= 1.10).
+
+### 1. Create S3 bucket for state
+
+```bash
+cd bootstrap
+terraform init
+terraform apply -var="bucket_name=langfuse-infra-tf-state" -var="aws_region=us-east-1" -var="user=your-name"
+```
+
+### 2. Configure backend
+
+Edit `infra/backend.tf` and uncomment the backend block:
+
+```hcl
+terraform {
+  backend "s3" {
+    bucket       = "langfuse-infra-tf-state"
+    key          = "langfuse/terraform.tfstate"
+    region       = "us-east-1"
+    use_lockfile = true  # Native S3 state locking
+    encrypt      = true
+  }
+}
+```
+
+### 3. Migrate state
+
+```bash
+cd infra
+terraform init -migrate-state
+```
+
 ## Destroy Resources
 
 ```bash
