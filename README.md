@@ -9,8 +9,8 @@ This project provides a Terraform configuration to deploy Langfuse v3 on AWS in 
 ### Features
 
 - **No Kubernetes required** - Simple operation with ECS Fargate
+- **HTTPS by default** - ALB + self-signed certificate (or ACM certificate for production)
 - **Auto-create VPC or use existing** - Flexible network configuration
-- **HTTPS support** - Optional ALB + ACM certificate
 - **Secure access control** - IP restriction via Security Groups
 - **Data persistence** - ClickHouse data persisted on EFS
 - **Cost optimization** - ARM64 (Graviton), S3 Intelligent-Tiering, VPC Endpoints (no NAT Gateway)
@@ -221,9 +221,24 @@ terraform plan -var-file=../tfvars/dev.tfvars
 terraform apply -var-file=../tfvars/dev.tfvars
 ```
 
-### 7. Get Public IP
+### 7. Get Access URL
 
-After deployment, get the ECS task's Public IP:
+After deployment, get the access URL from Terraform output:
+
+```bash
+terraform output langfuse_url
+```
+
+#### With ALB (default)
+
+```bash
+# Get ALB DNS name
+terraform output alb_dns_name
+```
+
+Example output: `langfuse-alb-123456789.us-east-1.elb.amazonaws.com`
+
+#### Without ALB (Public IP mode)
 
 ```bash
 # Set region (e.g., us-east-1)
@@ -236,7 +251,13 @@ xargs -I {} aws ec2 describe-network-interfaces --region $REGION --network-inter
 
 ### 8. Access Langfuse
 
-Open `http://<public-ip>:3000` in your browser.
+| Mode | Access URL | Notes |
+|------|------------|-------|
+| ALB + self-signed cert (default) | `https://<alb-dns-name>` | Browser shows certificate warning |
+| ALB + ACM certificate | `https://<alb-dns-name>` or `https://<custom-domain>` | Recommended for production |
+| ALB disabled | `http://<public-ip>:3000` | IP is dynamic (changes on task restart) |
+
+**Note**: When using self-signed certificate, you need to accept the browser security warning on first access.
 
 ## Variables
 
@@ -260,8 +281,10 @@ Open `http://<public-ip>:3000` in your browser.
 | `worker_memory` | Worker task memory (MB) | `2048` |
 | `clickhouse_cpu` | ClickHouse task CPU | `2048` |
 | `clickhouse_memory` | ClickHouse task memory (MB) | `4096` |
-| `enable_alb` | Enable ALB for HTTPS | `false` |
-| `certificate_arn` | ACM certificate ARN for HTTPS | - |
+| `enable_alb` | Enable ALB for HTTPS | `true` |
+| `certificate_arn` | ACM certificate ARN (self-signed if empty) | `""` |
+| `custom_domain` | Custom domain (e.g., langfuse.example.com) | `""` |
+| `route53_zone_id` | Route53 hosted zone ID (required with custom_domain) | `""` |
 
 ## Outputs
 
@@ -276,6 +299,8 @@ Open `http://<public-ip>:3000` in your browser.
 | `redis_endpoint` | Redis endpoint |
 | `s3_bucket_name` | S3 bucket name |
 | `clickhouse_dns` | ClickHouse internal DNS name |
+| `alb_dns_name` | ALB DNS name (when ALB enabled) |
+| `langfuse_url` | Langfuse access URL |
 
 ## Remote State Management (Optional)
 
@@ -343,14 +368,14 @@ Estimated monthly cost for minimum configuration:
 - RDS/ElastiCache placed in Private Subnets
 - EFS with transit encryption enabled
 - Security Groups with least privilege access
+- ALB HTTPS termination (TLS 1.3)
+- HTTP to HTTPS automatic redirect
 
 ## Future Enhancements
 
-- HTTPS support (ALB + ACM)
 - Static IP (NLB + Elastic IP)
-- Custom domain (Route53)
-- Auto Scaling
-- Terraform remote state (S3 + DynamoDB)
+- Auto Scaling (ECS Service Auto Scaling)
+- Enhanced monitoring (CloudWatch Container Insights)
 
 ## License
 

@@ -9,10 +9,11 @@ AWS ECS Fargate 上に Langfuse v3 をセルフホスティングするための
 ### 特徴
 
 - **Kubernetes 不要** - ECS Fargate ベースでシンプルな運用
+- **HTTPS 対応** - ALB + 自己署名証明書（デフォルト）または ACM 証明書
 - **VPC 自動作成または既存 VPC 利用** - 柔軟なネットワーク構成
 - **セキュアなアクセス制御** - Security Group による IP 制限
 - **データ永続化** - ClickHouse データは EFS に永続化
-- **コスト最適化** - S3 Intelligent-Tiering、VPC Endpoint 経由のアクセス
+- **コスト最適化** - S3 Intelligent-Tiering、VPC Endpoint 経由のアクセス（NAT Gateway 不要）
 
 ## アーキテクチャ
 
@@ -220,9 +221,24 @@ terraform plan -var-file=../tfvars/dev.tfvars
 terraform apply -var-file=../tfvars/dev.tfvars
 ```
 
-### 7. Public IP の確認
+### 7. アクセス URL の確認
 
-デプロイ完了後、ECS タスクの Public IP を確認:
+デプロイ完了後、Terraform の出力から URL を確認:
+
+```bash
+terraform output langfuse_url
+```
+
+#### ALB 有効時（デフォルト）
+
+```bash
+# ALB DNS 名を確認
+terraform output alb_dns_name
+```
+
+出力例: `langfuse-alb-123456789.us-east-1.elb.amazonaws.com`
+
+#### ALB 無効時（Public IP モード）
 
 ```bash
 # リージョンを設定（例: us-east-1）
@@ -235,7 +251,13 @@ xargs -I {} aws ec2 describe-network-interfaces --region $REGION --network-inter
 
 ### 8. Langfuse にアクセス
 
-ブラウザで `http://<public-ip>:3000` にアクセス。
+| モード | アクセス URL | 備考 |
+|--------|-------------|------|
+| ALB + 自己署名証明書（デフォルト） | `https://<alb-dns-name>` | ブラウザに証明書警告が表示される |
+| ALB + ACM 証明書 | `https://<alb-dns-name>` または `https://<custom-domain>` | 本番環境推奨 |
+| ALB 無効 | `http://<public-ip>:3000` | IP は動的（タスク再起動で変更） |
+
+**注意**: 自己署名証明書を使用する場合、初回アクセス時にブラウザのセキュリティ警告を許可する必要があります。
 
 ## 変数一覧
 
@@ -259,6 +281,10 @@ xargs -I {} aws ec2 describe-network-interfaces --region $REGION --network-inter
 | `worker_memory` | Worker タスク メモリ (MB) | `2048` |
 | `clickhouse_cpu` | ClickHouse タスク CPU | `2048` |
 | `clickhouse_memory` | ClickHouse タスク メモリ (MB) | `4096` |
+| `enable_alb` | ALB を有効化（HTTPS アクセス） | `true` |
+| `certificate_arn` | ACM 証明書 ARN（未指定時は自己署名証明書） | `""` |
+| `custom_domain` | カスタムドメイン（例: langfuse.example.com） | `""` |
+| `route53_zone_id` | Route53 ホストゾーン ID（custom_domain 指定時は必須） | `""` |
 
 ## 出力
 
@@ -273,6 +299,8 @@ xargs -I {} aws ec2 describe-network-interfaces --region $REGION --network-inter
 | `redis_endpoint` | Redis エンドポイント |
 | `s3_bucket_name` | S3 バケット名 |
 | `clickhouse_dns` | ClickHouse 内部 DNS 名 |
+| `alb_dns_name` | ALB DNS 名（ALB 有効時） |
+| `langfuse_url` | Langfuse アクセス URL |
 
 ## リモート State 管理（オプション）
 
@@ -340,14 +368,14 @@ terraform destroy -var-file=../tfvars/dev.tfvars
 - RDS/ElastiCache は Private Subnet に配置
 - EFS は転送時暗号化有効
 - Security Group で最小権限アクセス
+- ALB による HTTPS 終端（TLS 1.3 対応）
+- HTTP → HTTPS 自動リダイレクト
 
 ## 今後の拡張
 
-- HTTPS 対応（ALB + ACM）
 - 固定 IP（NLB + Elastic IP）
-- カスタムドメイン（Route53）
-- Auto Scaling
-- Terraform remote state（S3 + DynamoDB）
+- Auto Scaling（ECS Service Auto Scaling）
+- 監視強化（CloudWatch Container Insights）
 
 ## ライセンス
 
