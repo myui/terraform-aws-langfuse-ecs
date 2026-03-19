@@ -259,6 +259,32 @@ xargs -I {} aws ec2 describe-network-interfaces --region $REGION --network-inter
 
 **Note**: When using self-signed certificate, you need to accept the browser security warning on first access.
 
+### 9. Set nextauth_url and Redeploy
+
+After the initial deployment, once the ALB DNS name is determined, set `nextauth_url` and redeploy.
+This is required for Langfuse authentication (login, session management) to work properly.
+
+```bash
+# Get ALB DNS name
+terraform output alb_dns_name
+```
+
+Edit `tfvars/dev.tfvars`:
+
+```hcl
+# With ALB (default)
+nextauth_url = "https://<alb-dns-name>"
+
+# With custom domain
+# nextauth_url = "https://langfuse.example.com"
+```
+
+Redeploy:
+
+```bash
+terraform apply -var-file=../tfvars/dev.tfvars
+```
+
 ## Variables
 
 | Variable | Description | Default |
