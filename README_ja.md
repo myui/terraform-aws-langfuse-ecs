@@ -225,9 +225,12 @@ terraform apply -var-file=../tfvars/dev.tfvars
 デプロイ完了後、ECS タスクの Public IP を確認:
 
 ```bash
-aws ecs list-tasks --cluster langfuse --service-name langfuse-web --query 'taskArns[0]' --output text | \
-xargs -I {} aws ecs describe-tasks --cluster langfuse --tasks {} --query 'tasks[0].attachments[0].details[?name==`networkInterfaceId`].value' --output text | \
-xargs -I {} aws ec2 describe-network-interfaces --network-interface-ids {} --query 'NetworkInterfaces[0].Association.PublicIp' --output text
+# リージョンを設定（例: us-east-1）
+REGION=us-east-1
+
+aws ecs list-tasks --region $REGION --cluster langfuse --service-name langfuse-web --query 'taskArns[0]' --output text | \
+xargs -I {} aws ecs describe-tasks --region $REGION --cluster langfuse --tasks {} --query 'tasks[0].attachments[0].details[?name==`networkInterfaceId`].value' --output text | \
+xargs -I {} aws ec2 describe-network-interfaces --region $REGION --network-interface-ids {} --query 'NetworkInterfaces[0].Association.PublicIp' --output text
 ```
 
 ### 8. Langfuse にアクセス

@@ -52,6 +52,7 @@ echo -e "${GREEN}=== ECR Image Push Script ===${NC}"
 echo "AWS Account: ${AWS_ACCOUNT_ID}"
 echo "AWS Region: ${AWS_REGION}"
 echo "Repository Prefix: ${REPO_PREFIX}"
+echo "Platform: ${PLATFORM}"
 echo ""
 echo "Target repositories:"
 echo "  - ${ECR_WEB_URL}"
@@ -63,6 +64,9 @@ echo ""
 echo -e "${YELLOW}Logging in to ECR...${NC}"
 aws ecr get-login-password --region "${AWS_REGION}" | docker login --username AWS --password-stdin "${ECR_BASE}"
 
+# Target architecture (ARM64 for Fargate Graviton)
+PLATFORM="linux/arm64"
+
 # Function to pull, tag, and push an image
 push_image() {
     local source_image="$1"
@@ -73,8 +77,8 @@ push_image() {
     echo ""
     echo -e "${YELLOW}Processing ${name}...${NC}"
 
-    echo "  Pulling ${source_image}..."
-    docker pull "${source_image}"
+    echo "  Pulling ${source_image} for ${PLATFORM}..."
+    docker pull --platform "${PLATFORM}" "${source_image}"
 
     echo "  Tagging as ${ecr_url}:${tag}..."
     docker tag "${source_image}" "${ecr_url}:${tag}"

@@ -40,6 +40,12 @@ variable "vpc_cidr" {
   default     = "10.0.0.0/16"
 }
 
+variable "exclude_az_ids" {
+  description = "AZ IDs to exclude (e.g., use1-az3 doesn't support ARM64 Fargate in us-east-1)"
+  type        = list(string)
+  default     = ["use1-az3"]
+}
+
 variable "allowed_cidrs" {
   description = "Allowed CIDR list for external access"
   type        = list(string)
