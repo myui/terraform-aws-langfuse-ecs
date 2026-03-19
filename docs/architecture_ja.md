@@ -10,15 +10,17 @@ Terraform によるIaCでプロビジョニングする。
 - Kubernetes 不使用（ECS Fargate ベース）
 - VPC 自動作成または既存 VPC を利用
 - Security Group による IP 制限でアクセス制御
-- HTTPS は初期段階では不要（後日対応可能）
-- LB 不使用、Langfuse Web は Public Subnet に直接配置（Public IP 動的）
+- ALB + ACM 証明書による HTTPS 対応（オプション）
 - NAT Gateway 不使用、VPC Endpoints で AWS サービスにアクセス
 - コンテナイメージは ECR から取得（事前に push が必要）
+- ARM64 (Graviton) でコスト効率化
 - シンプル構成を優先
 
 ---
 
 ## Architecture Diagram
+
+### ALB なし（HTTP、動的 Public IP）
 
 ```
 Internet
@@ -31,6 +33,29 @@ Internet
 │  └─ ECS Service: Langfuse Web (Public IP, 単一タスク)  │
 │                                                        │
 │  Private Subnets                                       │
+│  ├─ ECS Service: Langfuse Worker (スケール可能)        │
+│  ├─ ECS Service: ClickHouse     (固定1タスク)          │
+│  │   └─ EFS (データ永続化)                              │
+│  ├─ RDS PostgreSQL                                     │
+│  ├─ ElastiCache Redis                                  │
+│  └─ VPC Endpoints (ECR, Logs, Secrets Manager, S3)     │
+└────────────────────────────────────────────────────────┘
+```
+
+### ALB あり（HTTPS、ACM 証明書が必要）
+
+```
+Internet
+  │
+  │  HTTPS:443 (ACM 証明書)
+  ▼
+┌─────────────── VPC (自動作成または既存) ──────────────┐
+│                                                        │
+│  Public Subnet                                         │
+│  └─ ALB (Application Load Balancer)                    │
+│                                                        │
+│  Private Subnets                                       │
+│  ├─ ECS Service: Langfuse Web (ALB 経由)               │
 │  ├─ ECS Service: Langfuse Worker (スケール可能)        │
 │  ├─ ECS Service: ClickHouse     (固定1タスク)          │
 │  │   └─ EFS (データ永続化)                              │
@@ -274,6 +299,8 @@ infra/
 | `worker_memory` | `number` | Worker タスク メモリ (default: `2048`) |
 | `clickhouse_cpu` | `number` | ClickHouse タスク CPU (default: `2048` = 2 vCPU) |
 | `clickhouse_memory` | `number` | ClickHouse タスク メモリ (default: `4096` = 4 GB) |
+| `enable_alb` | `bool` | ALB を有効化して HTTPS アクセス (default: `false`) |
+| `certificate_arn` | `string` | HTTPS 用 ACM 証明書 ARN (enable_alb = true の場合は必須) |
 
 ---
 
@@ -290,12 +317,53 @@ infra/
 | `redis_endpoint` | ElastiCache Redis エンドポイント |
 | `s3_bucket_name` | S3 バケット名 |
 | `clickhouse_dns` | ClickHouse 内部 DNS 名 |
+| `alb_dns_name` | ALB DNS 名（ALB 有効時） |
+| `langfuse_url` | Langfuse アクセス URL |
+
+---
+
+## ALB 設定（オプション）
+
+### オプション A: ALB + HTTP のみ（カスタムドメイン不要）
+
+```hcl
+enable_alb   = true
+nextauth_url = "http://<alb-dns-name>"  # デプロイ後に設定
+```
+
+アクセス: `http://<alb-dns-name>`
+
+### オプション B: ALB + HTTPS（カスタムドメインが必要）
+
+1. **ACM 証明書を作成**:
+   ```bash
+   aws acm request-certificate \
+     --domain-name langfuse.example.com \
+     --validation-method DNS \
+     --region us-east-1
+   ```
+
+2. **証明書を検証**（DNS に CNAME レコードを追加）
+
+3. **tfvars を設定**:
+   ```hcl
+   enable_alb      = true
+   certificate_arn = "arn:aws:acm:us-east-1:123456789012:certificate/xxx"
+   nextauth_url    = "https://langfuse.example.com"
+   ```
+
+4. **Terraform を適用**し、DNS を ALB に向ける
+
+ALB 有効時:
+- Langfuse Web は Private Subnet に移動（Public IP なし）
+- 証明書あり: HTTP:80 は HTTPS:443 にリダイレクト
+- 証明書なし: HTTP:80 のみ
+- 通信経路: Internet → ALB → ECS (HTTP:3000)
 
 ---
 
 ## Future Considerations
 
-- **HTTPS 対応**: ALB 追加 + ACM 証明書
 - **固定IP**: NLB + Elastic IP の追加
 - **カスタムドメイン**: Route53 で DNS レコード設定
 - **Auto Scaling**: Web / Worker に ECS Service Auto Scaling (CPU/Memory ベース) を追加

@@ -144,7 +144,33 @@ variable "clickhouse_image" {
 }
 
 variable "nextauth_url" {
-  description = "Langfuse Web public URL (e.g., http://<public_ip>:3000)"
+  description = "Langfuse Web public URL (e.g., https://langfuse.example.com)"
+  type        = string
+  default     = ""
+}
+
+# ALB Configuration
+variable "enable_alb" {
+  description = "Enable ALB (recommended for production)"
+  type        = bool
+  default     = true
+}
+
+variable "certificate_arn" {
+  description = "ACM certificate ARN for HTTPS. If empty, a self-signed certificate is used."
+  type        = string
+  default     = ""
+}
+
+# Custom Domain Configuration (optional)
+variable "custom_domain" {
+  description = "Custom domain for Langfuse (e.g., langfuse.example.com). Requires Route53 hosted zone."
+  type        = string
+  default     = ""
+}
+
+variable "route53_zone_id" {
+  description = "Route53 hosted zone ID for custom domain. Required when custom_domain is set."
   type        = string
   default     = ""
 }

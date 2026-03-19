@@ -10,6 +10,10 @@ terraform {
       source  = "hashicorp/random"
       version = "~> 3.0"
     }
+    tls = {
+      source  = "hashicorp/tls"
+      version = "~> 4.0"
+    }
   }
 }
 
@@ -71,6 +75,15 @@ module "langfuse" {
   salt_arn                = aws_secretsmanager_secret.salt.arn
   encryption_key_arn      = aws_secretsmanager_secret.encryption_key.arn
   clickhouse_password_arn = aws_secretsmanager_secret.clickhouse_password.arn
+
+  # ALB configuration
+  enable_alb      = var.enable_alb
+  certificate_arn = var.certificate_arn
+  allowed_cidrs   = var.allowed_cidrs
+
+  # Custom domain (optional)
+  custom_domain   = var.custom_domain
+  route53_zone_id = var.route53_zone_id
 }
 
 module "clickhouse" {

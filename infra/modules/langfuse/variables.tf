@@ -136,3 +136,35 @@ variable "clickhouse_password_arn" {
   description = "ClickHouse password secret ARN"
   type        = string
 }
+
+# ALB Configuration
+variable "enable_alb" {
+  description = "Enable ALB (recommended for production)"
+  type        = bool
+  default     = true
+}
+
+variable "certificate_arn" {
+  description = "ACM certificate ARN for HTTPS"
+  type        = string
+  default     = ""
+}
+
+variable "allowed_cidrs" {
+  description = "Allowed CIDRs for ALB access"
+  type        = list(string)
+  default     = ["0.0.0.0/0"]
+}
+
+# Custom Domain Configuration
+variable "custom_domain" {
+  description = "Custom domain for Langfuse (e.g., langfuse.example.com)"
+  type        = string
+  default     = ""
+}
+
+variable "route53_zone_id" {
+  description = "Route53 hosted zone ID for custom domain"
+  type        = string
+  default     = ""
+}

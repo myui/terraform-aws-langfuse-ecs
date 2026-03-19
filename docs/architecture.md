@@ -10,15 +10,17 @@ Provisioned via Infrastructure as Code (IaC) using Terraform.
 - No Kubernetes (ECS Fargate-based)
 - Auto-create VPC or use existing VPC
 - Access control via Security Group IP restrictions
-- HTTPS not required initially (can be added later)
-- No Load Balancer; Langfuse Web placed directly in Public Subnet (dynamic Public IP)
+- HTTPS support via ALB + ACM certificate (optional)
 - No NAT Gateway; use VPC Endpoints for AWS service access
 - Container images from ECR (must be pushed beforehand)
+- ARM64 (Graviton) for cost efficiency
 - Prioritize simple configuration
 
 ---
 
 ## Architecture Diagram
+
+### Without ALB (HTTP, dynamic Public IP)
 
 ```
 Internet
@@ -31,6 +33,29 @@ Internet
 |  +- ECS Service: Langfuse Web (Public IP, single task)|
 |                                                      |
 |  Private Subnets                                     |
+|  +- ECS Service: Langfuse Worker (scalable)          |
+|  +- ECS Service: ClickHouse     (fixed 1 task)       |
+|  |   +- EFS (data persistence)                       |
+|  +- RDS PostgreSQL                                   |
+|  +- ElastiCache Redis                                |
+|  +- VPC Endpoints (ECR, Logs, Secrets Manager, S3)   |
++------------------------------------------------------+
+```
+
+### With ALB (HTTPS, ACM certificate required)
+
+```
+Internet
+  |
+  |  HTTPS:443 (ACM certificate)
+  v
++------------------- VPC (auto-created or existing) ---+
+|                                                      |
+|  Public Subnet                                       |
+|  +- ALB (Application Load Balancer)                  |
+|                                                      |
+|  Private Subnets                                     |
+|  +- ECS Service: Langfuse Web (behind ALB)           |
 |  +- ECS Service: Langfuse Worker (scalable)          |
 |  +- ECS Service: ClickHouse     (fixed 1 task)       |
 |  |   +- EFS (data persistence)                       |
@@ -274,6 +299,8 @@ infra/
 | `worker_memory` | `number` | Worker task memory (default: `2048`) |
 | `clickhouse_cpu` | `number` | ClickHouse task CPU (default: `2048` = 2 vCPU) |
 | `clickhouse_memory` | `number` | ClickHouse task memory (default: `4096` = 4 GB) |
+| `enable_alb` | `bool` | Enable ALB for HTTPS access (default: `false`) |
+| `certificate_arn` | `string` | ACM certificate ARN for HTTPS (required if enable_alb = true) |
 
 ---
 
@@ -290,12 +317,53 @@ infra/
 | `redis_endpoint` | ElastiCache Redis endpoint |
 | `s3_bucket_name` | S3 bucket name |
 | `clickhouse_dns` | ClickHouse internal DNS name |
+| `alb_dns_name` | ALB DNS name (when ALB is enabled) |
+| `langfuse_url` | Langfuse access URL |
+
+---
+
+## ALB Configuration (Optional)
+
+### Option A: ALB with HTTP only (no custom domain required)
+
+```hcl
+enable_alb   = true
+nextauth_url = "http://<alb-dns-name>"  # Set after deployment
+```
+
+Access via: `http://<alb-dns-name>`
+
+### Option B: ALB with HTTPS (custom domain required)
+
+1. **Create ACM certificate**:
+   ```bash
+   aws acm request-certificate \
+     --domain-name langfuse.example.com \
+     --validation-method DNS \
+     --region us-east-1
+   ```
+
+2. **Validate certificate** via DNS
+
+3. **Configure tfvars**:
+   ```hcl
+   enable_alb      = true
+   certificate_arn = "arn:aws:acm:us-east-1:123456789012:certificate/xxx"
+   nextauth_url    = "https://langfuse.example.com"
+   ```
+
+4. **Apply Terraform** and configure DNS to point to ALB
+
+When ALB is enabled:
+- Langfuse Web moves to Private Subnet (no public IP)
+- With certificate: HTTP:80 redirects to HTTPS:443
+- Without certificate: HTTP:80 only
+- Traffic: Internet → ALB → ECS (HTTP:3000)
 
 ---
 
 ## Future Considerations
 
-- **HTTPS support**: Add ALB + ACM certificate
 - **Static IP**: Add NLB + Elastic IP
 - **Custom domain**: Configure DNS records in Route53
 - **Auto Scaling**: Add ECS Service Auto Scaling (CPU/Memory-based) for Web / Worker

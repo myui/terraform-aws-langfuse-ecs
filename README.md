@@ -10,9 +10,10 @@ This project provides a Terraform configuration to deploy Langfuse v3 on AWS in 
 
 - **No Kubernetes required** - Simple operation with ECS Fargate
 - **Auto-create VPC or use existing** - Flexible network configuration
+- **HTTPS support** - Optional ALB + ACM certificate
 - **Secure access control** - IP restriction via Security Groups
 - **Data persistence** - ClickHouse data persisted on EFS
-- **Cost optimization** - S3 Intelligent-Tiering, access via VPC Endpoint
+- **Cost optimization** - ARM64 (Graviton), S3 Intelligent-Tiering, VPC Endpoints (no NAT Gateway)
 
 ## Architecture
 
@@ -259,6 +260,8 @@ Open `http://<public-ip>:3000` in your browser.
 | `worker_memory` | Worker task memory (MB) | `2048` |
 | `clickhouse_cpu` | ClickHouse task CPU | `2048` |
 | `clickhouse_memory` | ClickHouse task memory (MB) | `4096` |
+| `enable_alb` | Enable ALB for HTTPS | `false` |
+| `certificate_arn` | ACM certificate ARN for HTTPS | - |
 
 ## Outputs
 

@@ -69,9 +69,20 @@ resource "aws_ecs_service" "web" {
   launch_type     = "FARGATE"
 
   network_configuration {
-    subnets          = var.public_subnet_ids
+    # When ALB is enabled, place in private subnets; otherwise public subnets with public IP
+    subnets          = var.enable_alb ? var.private_subnet_ids : var.public_subnet_ids
     security_groups  = [var.web_security_group_id]
-    assign_public_ip = true
+    assign_public_ip = var.enable_alb ? false : true
+  }
+
+  # ALB target group registration
+  dynamic "load_balancer" {
+    for_each = var.enable_alb ? [1] : []
+    content {
+      target_group_arn = aws_lb_target_group.web[0].arn
+      container_name   = "langfuse-web"
+      container_port   = 3000
+    }
   }
 
   tags = {

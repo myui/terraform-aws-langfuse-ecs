@@ -46,5 +46,17 @@ clickhouse_memory = 4096  # 4 GB
 
 # Langfuse Configuration
 # NEXTAUTH_URL is required for authentication to work properly.
-# After first deployment, get the Public IP and update this value, then run terraform apply again.
-# nextauth_url = "http://<your-public-ip>:3000"
+# After first deployment, get the ALB DNS name or Public IP and update this value.
+# nextauth_url = "https://langfuse.example.com"  # With ALB + custom domain
+# nextauth_url = "http://<your-public-ip>:3000"  # Without ALB
+
+# ALB Configuration (enabled by default)
+# - Without certificate_arn: HTTPS with self-signed certificate (browser warning)
+# - With certificate_arn: HTTPS with ACM certificate
+# enable_alb = true
+# certificate_arn = "arn:aws:acm:us-east-1:123456789012:certificate/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+
+# Custom Domain (optional)
+# Requires Route53 hosted zone and ACM certificate for the domain
+# custom_domain   = "langfuse.example.com"
+# route53_zone_id = "Z1234567890ABC"

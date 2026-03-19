@@ -43,3 +43,14 @@ output "clickhouse_dns" {
   description = "ClickHouse internal DNS name"
   value       = module.clickhouse.dns_name
 }
+
+# ALB outputs
+output "alb_dns_name" {
+  description = "ALB DNS name (when ALB is enabled)"
+  value       = module.langfuse.alb_dns_name
+}
+
+output "langfuse_url" {
+  description = "Langfuse access URL (HTTPS via ALB with ACM or self-signed certificate)"
+  value       = var.enable_alb ? "https://${var.custom_domain != "" ? var.custom_domain : module.langfuse.alb_dns_name}" : "http://<public-ip>:3000"
+}
