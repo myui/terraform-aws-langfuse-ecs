@@ -51,6 +51,12 @@ variable "allowed_cidrs" {
   type        = list(string)
 }
 
+variable "allowed_security_group_ids" {
+  description = "Security group IDs allowed to access ALB (for internal AWS services tracing)"
+  type        = list(string)
+  default     = []
+}
+
 # RDS
 variable "db_instance_class" {
   description = "RDS instance class"

@@ -11,7 +11,7 @@ This project provides a Terraform configuration to deploy Langfuse v3 on AWS in 
 - **No Kubernetes required** - Simple operation with ECS Fargate
 - **HTTPS by default** - ALB + self-signed certificate (or ACM certificate for production)
 - **Auto-create VPC or use existing** - Flexible network configuration
-- **Secure access control** - IP restriction via Security Groups
+- **Secure access control** - IP restriction and/or Security Group-based access via ALB
 - **Data persistence** - ClickHouse data persisted on EFS
 - **Cost optimization** - ARM64 (Graviton), S3 Intelligent-Tiering, VPC Endpoints (no NAT Gateway)
 
@@ -297,6 +297,7 @@ terraform apply -var-file=../tfvars/dev.tfvars
 | `private_subnet_ids` | Private Subnet IDs (required if vpc_id specified) | `null` |
 | `vpc_cidr` | CIDR for new VPC (only used when auto-creating) | `10.0.0.0/16` |
 | `allowed_cidrs` | Allowed CIDR list for access | - |
+| `allowed_security_group_ids` | Security group IDs allowed to access ALB via HTTPS (for internal AWS services tracing) | `[]` |
 | `db_instance_class` | RDS instance class | `db.t4g.micro` |
 | `db_multi_az` | Enable RDS Multi-AZ | `false` |
 | `cache_node_type` | ElastiCache node type | `cache.t4g.micro` |
@@ -395,7 +396,7 @@ Estimated monthly cost for minimum configuration:
 - EFS with transit encryption enabled
 - Security Groups with least privilege access
 - ALB HTTPS termination (TLS 1.3)
-- HTTP to HTTPS automatic redirect
+- Both HTTP and HTTPS accessible (no forced redirect)
 
 ## Future Enhancements
 

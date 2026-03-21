@@ -183,7 +183,7 @@ Private subnets use VPC Endpoints instead of NAT Gateway for AWS service access:
 
 | SG Name | Inbound Rule | Source | Egress | Description |
 |---|---|---|---|---|
-| `sg-alb` | TCP 443, 80 | `var.allowed_cidrs` | All | ALB for HTTPS termination |
+| `sg-alb` | TCP 443, 80 | `var.allowed_cidrs` (HTTP+HTTPS), `var.allowed_security_group_ids` (HTTPS only) | All | ALB for HTTPS termination |
 | `sg-web` | TCP 3000 | sg-alb (with ALB) or `var.allowed_cidrs` (without ALB) | All | Langfuse Web application |
 | `sg-worker` | TCP 3030 | sg-web | All | Worker health check endpoint |
 | `sg-clickhouse` | TCP 8123, 9000 | sg-web, sg-worker | All | ClickHouse HTTP and native protocols |
@@ -194,7 +194,7 @@ Private subnets use VPC Endpoints instead of NAT Gateway for AWS service access:
 
 #### Security Design Notes
 
-- **ALB Security Group**: Only created when `enable_alb = true`. Restricts access to specified IP ranges.
+- **ALB Security Group**: Only created when `enable_alb = true`. Restricts access to specified IP ranges (`allowed_cidrs`) and/or security groups (`allowed_security_group_ids`).
 - **Web Security Group**: When ALB is enabled, direct access from `allowed_cidrs` is disabled. Traffic must go through ALB.
 - **RDS Security Group**: No egress rules defined (RDS managed service does not require outbound connectivity).
 - **Principle of Least Privilege**: Each component can only communicate with the specific services it needs.
@@ -342,6 +342,7 @@ infra/
 | `private_subnet_ids` | `list(string)` | Private Subnet IDs (required if vpc_id set) |
 | `vpc_cidr` | `string` | CIDR for auto-created VPC (default: `10.0.0.0/16`) |
 | `allowed_cidrs` | `list(string)` | Allowed CIDR list for access |
+| `allowed_security_group_ids` | `list(string)` | Security group IDs allowed to access ALB via HTTPS only (for internal AWS services tracing, default: `[]`) |
 | `langfuse_web_image` | `string` | ECR image URL for Langfuse Web |
 | `langfuse_worker_image` | `string` | ECR image URL for Langfuse Worker |
 | `clickhouse_image` | `string` | ECR image URL for ClickHouse |
@@ -441,7 +442,7 @@ Terraform will automatically create an A record alias in Route53.
 When ALB is enabled:
 - Langfuse Web moves to Private Subnet (no public IP)
 - HTTPS:443 is always enabled (ACM or self-signed certificate)
-- HTTP:80 redirects to HTTPS:443
+- Both HTTP:80 and HTTPS:443 forward to target group (both protocols accessible)
 - Traffic flow: Internet → ALB (HTTPS) → ECS (HTTP:3000)
 
 ---

@@ -11,7 +11,7 @@ AWS ECS Fargate 上に Langfuse v3 をセルフホスティングするための
 - **Kubernetes 不要** - ECS Fargate ベースでシンプルな運用
 - **HTTPS 対応** - ALB + 自己署名証明書（デフォルト）または ACM 証明書
 - **VPC 自動作成または既存 VPC 利用** - 柔軟なネットワーク構成
-- **セキュアなアクセス制御** - Security Group による IP 制限
+- **セキュアなアクセス制御** - ALB 経由の IP 制限および/またはセキュリティグループベースのアクセス
 - **データ永続化** - ClickHouse データは EFS に永続化
 - **コスト最適化** - S3 Intelligent-Tiering、VPC Endpoint 経由のアクセス（NAT Gateway 不要）
 
@@ -297,6 +297,7 @@ terraform apply -var-file=../tfvars/dev.tfvars
 | `private_subnet_ids` | Private Subnet IDs（vpc_id 指定時は必須） | `null` |
 | `vpc_cidr` | 新規 VPC の CIDR（VPC 自動作成時のみ使用） | `10.0.0.0/16` |
 | `allowed_cidrs` | アクセス許可 CIDR リスト | - |
+| `allowed_security_group_ids` | ALB への HTTPS アクセスを許可するセキュリティグループ ID（内部 AWS サービスの tracing 用） | `[]` |
 | `db_instance_class` | RDS インスタンスクラス | `db.t4g.micro` |
 | `db_multi_az` | RDS Multi-AZ 有効化 | `false` |
 | `cache_node_type` | ElastiCache ノードタイプ | `cache.t4g.micro` |
@@ -395,7 +396,7 @@ terraform destroy -var-file=../tfvars/dev.tfvars
 - EFS は転送時暗号化有効
 - Security Group で最小権限アクセス
 - ALB による HTTPS 終端（TLS 1.3 対応）
-- HTTP → HTTPS 自動リダイレクト
+- HTTP と HTTPS の両方でアクセス可能（強制リダイレクトなし）
 
 ## 今後の拡張
 

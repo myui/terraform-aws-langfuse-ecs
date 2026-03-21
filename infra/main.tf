@@ -77,9 +77,10 @@ module "langfuse" {
   clickhouse_password_arn = aws_secretsmanager_secret.clickhouse_password.arn
 
   # ALB configuration
-  enable_alb      = var.enable_alb
-  certificate_arn = var.certificate_arn
-  allowed_cidrs   = var.allowed_cidrs
+  enable_alb                 = var.enable_alb
+  certificate_arn            = var.certificate_arn
+  allowed_cidrs              = var.allowed_cidrs
+  allowed_security_group_ids = var.allowed_security_group_ids
 
   # Custom domain (optional)
   custom_domain   = var.custom_domain

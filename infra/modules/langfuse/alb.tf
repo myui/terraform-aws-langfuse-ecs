@@ -50,6 +50,18 @@ resource "aws_security_group" "alb" {
     cidr_blocks = var.allowed_cidrs
   }
 
+  # HTTPS from allowed security groups (for internal AWS services tracing API)
+  dynamic "ingress" {
+    for_each = var.allowed_security_group_ids
+    content {
+      description     = "HTTPS from allowed security group"
+      from_port       = 443
+      to_port         = 443
+      protocol        = "tcp"
+      security_groups = [ingress.value]
+    }
+  }
+
   # Egress to ECS tasks
   egress {
     from_port   = 0

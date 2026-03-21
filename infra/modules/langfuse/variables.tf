@@ -156,6 +156,12 @@ variable "allowed_cidrs" {
   default     = ["0.0.0.0/0"]
 }
 
+variable "allowed_security_group_ids" {
+  description = "Security group IDs allowed to access ALB (for internal AWS services tracing)"
+  type        = list(string)
+  default     = []
+}
+
 # Custom Domain Configuration
 variable "custom_domain" {
   description = "Custom domain for Langfuse (e.g., langfuse.example.com)"
