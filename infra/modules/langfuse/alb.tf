@@ -105,7 +105,7 @@ resource "aws_lb_listener" "https" {
   }
 }
 
-# HTTP Listener - Always redirect to HTTPS
+# HTTP Listener - Forward to target group (allows both HTTP and HTTPS access)
 resource "aws_lb_listener" "http" {
   count = var.enable_alb ? 1 : 0
 
@@ -114,13 +114,8 @@ resource "aws_lb_listener" "http" {
   protocol          = "HTTP"
 
   default_action {
-    type = "redirect"
-
-    redirect {
-      port        = "443"
-      protocol    = "HTTPS"
-      status_code = "HTTP_301"
-    }
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.web[0].arn
   }
 }
 
