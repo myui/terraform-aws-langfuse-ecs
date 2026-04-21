@@ -41,9 +41,18 @@ variable "vpc_cidr" {
 }
 
 variable "exclude_az_ids" {
-  description = "AZ IDs to exclude (e.g., use1-az3 doesn't support ARM64 Fargate in us-east-1)"
+  description = "AZ IDs to exclude (used only when ecs_cpu_architecture is ARM64)"
   type        = list(string)
   default     = ["use1-az3"]
+}
+
+variable "ecs_cpu_architecture" {
+  description = "ECS Fargate task CPU architecture for runtime_platform.cpu_architecture (X86_64 or ARM64)."
+  type        = string
+  default     = "X86_64"
+
+  # Note: This repo currently builds/pushes Langfuse images as a single `linux/amd64` image.
+  # If you set `ARM64`, you must also update the build/push logic to generate ARM64 images.
 }
 
 variable "allowed_cidrs" {
@@ -129,24 +138,34 @@ variable "clickhouse_memory" {
 }
 
 # Container Images (ECR)
-# ECR repositories must be created beforehand and images pushed before deployment.
-# See scripts/push-images.sh for helper script.
+# 省略可能。省略した場合は infra/ecr.tf で作成した ECR リポジトリの :latest タグを使用。
+# 初回は GitHub Actions の workflow_dispatch で ai-eval/ からビルドしてプッシュすること。
+# 上書きしたい場合のみ明示的に指定する。
 variable "langfuse_web_image" {
-  description = "Langfuse Web container image (ECR URL with tag)"
+  description = "Langfuse Web コンテナイメージ (ECR URL)。null の場合は ECR の :latest を使用。"
   type        = string
-  # Example: "123456789012.dkr.ecr.ap-northeast-1.amazonaws.com/langfuse-web:3"
+  default     = null
+  nullable    = true
 }
 
 variable "langfuse_worker_image" {
-  description = "Langfuse Worker container image (ECR URL with tag)"
+  description = "Langfuse Worker コンテナイメージ (ECR URL)。null の場合は ECR の :latest を使用。"
   type        = string
-  # Example: "123456789012.dkr.ecr.ap-northeast-1.amazonaws.com/langfuse-worker:3"
+  default     = null
+  nullable    = true
 }
 
 variable "clickhouse_image" {
-  description = "ClickHouse container image (ECR URL with tag)"
+  description = "ClickHouse コンテナイメージ (ECR URL)。null の場合は ECR の :latest を使用。"
   type        = string
-  # Example: "123456789012.dkr.ecr.ap-northeast-1.amazonaws.com/clickhouse:24"
+  default     = null
+  nullable    = true
+}
+
+# GitHub Actions OIDC 認証設定
+variable "github_repo" {
+  description = "GitHub リポジトリ名（例: org/repo）。GitHub Actions OIDC 認証に使用。"
+  type        = string
 }
 
 variable "nextauth_url" {

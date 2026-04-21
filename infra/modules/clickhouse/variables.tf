@@ -43,6 +43,12 @@ variable "task_role_id" {
   type        = string
 }
 
+variable "ecs_cpu_architecture" {
+  description = "ECS Fargate task CPU architecture for runtime_platform.cpu_architecture"
+  type        = string
+  default     = "X86_64"
+}
+
 variable "clickhouse_password_arn" {
   description = "ClickHouse password secret ARN"
   type        = string

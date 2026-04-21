@@ -16,10 +16,10 @@
 #
 terraform {
   backend "s3" {
-    bucket       = "langfuse-infra-tf-state"
+    bucket       = "langfuse-tf-state-796012662922"
     key          = "langfuse/terraform.tfstate"
-    region       = "us-east-1"
-    use_lockfile = true  # Native S3 state locking (Terraform >= 1.10)
+    region       = "ap-northeast-1"
+    use_lockfile = true
     encrypt      = true
   }
 }

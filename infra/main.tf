@@ -50,6 +50,7 @@ module "langfuse" {
 
   service_name             = var.service_name
   aws_region               = var.aws_region
+  ecs_cpu_architecture     = var.ecs_cpu_architecture
   vpc_id                   = local.vpc_id
   public_subnet_ids        = local.public_subnet_ids
   private_subnet_ids       = local.private_subnet_ids
@@ -59,8 +60,8 @@ module "langfuse" {
   task_role_arn            = aws_iam_role.ecs_task.arn
   task_role_id             = aws_iam_role.ecs_task.id
 
-  web_image            = var.langfuse_web_image
-  worker_image         = var.langfuse_worker_image
+  web_image            = local.resolved_web_image
+  worker_image         = local.resolved_worker_image
   web_cpu              = var.web_cpu
   web_memory           = var.web_memory
   worker_cpu           = var.worker_cpu
@@ -93,6 +94,7 @@ module "clickhouse" {
   service_name            = var.service_name
   vpc_id                  = local.vpc_id
   private_subnet_ids      = local.private_subnet_ids
+  ecs_cpu_architecture    = var.ecs_cpu_architecture
   security_group_id       = aws_security_group.clickhouse.id
   efs_security_group_id   = aws_security_group.efs.id
   ecs_cluster_id          = module.langfuse.cluster_id
@@ -101,7 +103,7 @@ module "clickhouse" {
   task_role_id            = aws_iam_role.ecs_task.id
   clickhouse_password_arn = aws_secretsmanager_secret.clickhouse_password.arn
   aws_region              = var.aws_region
-  image                   = var.clickhouse_image
+  image                   = local.resolved_clickhouse_image
   cpu                     = var.clickhouse_cpu
   memory                  = var.clickhouse_memory
 }

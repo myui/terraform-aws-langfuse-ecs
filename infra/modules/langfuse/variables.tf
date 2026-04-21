@@ -48,6 +48,12 @@ variable "task_role_id" {
   type        = string
 }
 
+variable "ecs_cpu_architecture" {
+  description = "ECS Fargate task CPU architecture for runtime_platform.cpu_architecture"
+  type        = string
+  default     = "X86_64"
+}
+
 # Container images
 variable "web_image" {
   description = "Langfuse Web container image"

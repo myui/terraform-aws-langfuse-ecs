@@ -14,10 +14,10 @@ resource "aws_ecs_task_definition" "main" {
   execution_role_arn       = var.execution_role_arn
   task_role_arn            = var.task_role_arn
 
-  # ARM64 architecture for cost efficiency (Graviton)
+  # ECS Fargate task CPU architecture.
   runtime_platform {
     operating_system_family = "LINUX"
-    cpu_architecture        = "ARM64"
+    cpu_architecture        = var.ecs_cpu_architecture
   }
 
   volume {
@@ -100,6 +100,17 @@ resource "aws_ecs_service" "main" {
   launch_type     = "FARGATE"
 
   platform_version = "1.4.0"
+
+  # ClickHouse is a stateful singleton backed by EFS.
+  # During deployment, prevent old+new tasks from running concurrently.
+  # If the new task fails to start, rollback to the previous stable task definition.
+  deployment_maximum_percent          = 100
+  deployment_minimum_healthy_percent = 0
+
+  deployment_circuit_breaker {
+    enable   = true
+    rollback = true
+  }
 
   network_configuration {
     subnets          = var.private_subnet_ids

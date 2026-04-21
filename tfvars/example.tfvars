@@ -5,11 +5,15 @@ service_name = "langfuse"
 # Resource Tags (for easy identification)
 user = "your-name"  # e.g., "john", "team-ml"
 
-# Container Images (ECR URLs - must be pushed beforehand)
-# See README for ECR setup instructions
-langfuse_web_image    = "123456789012.dkr.ecr.ap-northeast-1.amazonaws.com/langfuse-dev/web:3"
-langfuse_worker_image = "123456789012.dkr.ecr.ap-northeast-1.amazonaws.com/langfuse-dev/worker:3"
-clickhouse_image      = "123456789012.dkr.ecr.ap-northeast-1.amazonaws.com/langfuse-dev/clickhouse:24"
+# GitHub Actions OIDC 認証（必須）
+github_repo = "moji-inc/ai-eval"
+
+# コンテナイメージ（省略可能）
+# 省略した場合は ECR の :latest タグを使用（GitHub Actions が ai-eval/ からビルドしてプッシュ）
+# 特定バージョンに固定したい場合のみコメントを外して設定する
+# langfuse_web_image    = "123456789012.dkr.ecr.ap-northeast-1.amazonaws.com/langfuse/web:abc123"
+# langfuse_worker_image = "123456789012.dkr.ecr.ap-northeast-1.amazonaws.com/langfuse/worker:abc123"
+# clickhouse_image      = "123456789012.dkr.ecr.ap-northeast-1.amazonaws.com/langfuse/clickhouse:24"
 
 # Network Configuration
 # Option A: Auto-create VPC (comment out vpc_id and subnet_ids)
@@ -30,6 +34,10 @@ db_multi_az       = false
 
 # ElastiCache Configuration
 cache_node_type = "cache.t4g.micro"
+
+# ECS CPU Architecture for Fargate tasks
+# - This repo currently builds/pushes Langfuse images as `linux/amd64` only.
+ecs_cpu_architecture = "X86_64"
 
 # ECS - Web Configuration
 web_cpu    = 1024  # 1 vCPU

@@ -131,8 +131,8 @@ For details, see [docs/architecture.md](docs/architecture.md).
 
 - Terraform >= 1.0
 - AWS CLI (configured with credentials)
-- Docker (for pushing images to ECR)
-- ECR repositories (must be created beforehand)
+- Docker (ClickHouse イメージの初回プッシュ時のみ必要)
+- GitHub repository (`moji-inc/ai-eval`) with Actions enabled
 - Existing VPC (optional) - auto-created if not specified
 
 ## Quick Start
@@ -140,7 +140,7 @@ For details, see [docs/architecture.md](docs/architecture.md).
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/myui/terraform-aws-langfuse-ecs.git
+git clone https://github.com/moji-inc/terraform-aws-langfuse-ecs.git
 cd terraform-aws-langfuse-ecs
 ```
 
@@ -152,44 +152,14 @@ cp tfvars/example.tfvars tfvars/dev.tfvars
 
 Edit `tfvars/dev.tfvars`:
 
-### 3. Create ECR repositories (outside Terraform)
-
-```bash
-# Create ECR repositories
-aws ecr create-repository --repository-name langfuse-dev/web --tags Key=user,Value=YOUR_NAME
-aws ecr create-repository --repository-name langfuse-dev/worker --tags Key=user,Value=YOUR_NAME
-aws ecr create-repository --repository-name langfuse-dev/clickhouse --tags Key=user,Value=YOUR_NAME
-```
-
-### 4. Push container images to ECR
-
-```bash
-# Use the script to push images
-./scripts/push-images.sh <aws_account_id> <aws_region> langfuse-dev
-
-# Example:
-./scripts/push-images.sh 123456789012 ap-northeast-1 langfuse-dev
-```
-
-This script will:
-- Pull `langfuse/langfuse:3`, `langfuse/langfuse-worker:3`, `clickhouse/clickhouse-server:24` from Docker Hub
-- Login to ECR
-- Push images to ECR
-
-### 5. Edit tfvars file
-
-Edit `tfvars/dev.tfvars`:
-
 ```hcl
 # AWS Configuration
 aws_region   = "ap-northeast-1"
 service_name = "langfuse"
 user         = "your-name"
 
-# Container Images (ECR URLs)
-langfuse_web_image    = "123456789012.dkr.ecr.ap-northeast-1.amazonaws.com/langfuse-dev/web:3"
-langfuse_worker_image = "123456789012.dkr.ecr.ap-northeast-1.amazonaws.com/langfuse-dev/worker:3"
-clickhouse_image      = "123456789012.dkr.ecr.ap-northeast-1.amazonaws.com/langfuse-dev/clickhouse:24"
+# GitHub Actions OIDC (required)
+github_repo = "moji-inc/ai-eval"
 
 # Network Configuration
 # Option A: Auto-create VPC
@@ -204,7 +174,9 @@ vpc_cidr = "10.0.0.0/16"
 allowed_cidrs = ["203.0.113.0/24"]
 ```
 
-### 6. Run Terraform
+**Note**: Container image variables (`langfuse_web_image`, `langfuse_worker_image`, `clickhouse_image`) are optional. If omitted, ECR `:latest` tags are used (pushed by GitHub Actions and `scripts/push-images.sh`).
+
+### 3. Run Terraform
 
 ```bash
 cd infra
@@ -212,14 +184,42 @@ cd infra
 # Initialize
 terraform init
 
-# export AWS_PROFILE=rd:engineering
-
 # Review plan
 terraform plan -var-file=../tfvars/dev.tfvars
 
-# Deploy
+# Deploy (creates ECR repositories, ECS cluster, RDS, ALB, GitHub Actions OIDC role, etc.)
 terraform apply -var-file=../tfvars/dev.tfvars
 ```
+
+### 4. Push ClickHouse image to ECR
+
+ClickHouse is an official image (no custom build). Push it to ECR once:
+
+```bash
+./scripts/push-images.sh <aws_account_id> <aws_region> langfuse
+
+# Example:
+./scripts/push-images.sh 123456789012 ap-northeast-1 langfuse
+```
+
+### 5. Set up GitHub Actions Variables
+
+Set the following Variables in `moji-inc/ai-eval` repository (Settings > Secrets and variables > Actions > Variables):
+
+| Variable | Value (from `terraform output`) |
+|----------|--------------------------------|
+| `AWS_ROLE_ARN` | `github_actions_role_arn` |
+| `AWS_REGION` | e.g., `ap-northeast-1` |
+| `SERVICE_NAME` | e.g., `langfuse` |
+| `ECS_CLUSTER_NAME` | `ecs_cluster_name` |
+| `ECS_WEB_SERVICE_NAME` | `langfuse_web_service_name` |
+| `ECS_WORKER_SERVICE_NAME` | `langfuse_worker_service_name` |
+
+### 6. Run initial deployment via GitHub Actions
+
+Go to `moji-inc/ai-eval` repository > Actions > "Deploy to ECS" > Run workflow (`workflow_dispatch`).
+
+This builds `ai-eval` web/worker images from source and deploys them to ECS. Subsequent pushes to `main` trigger this automatically.
 
 ### 7. Get Access URL
 
@@ -292,12 +292,16 @@ terraform apply -var-file=../tfvars/dev.tfvars
 | `aws_region` | AWS region | - |
 | `service_name` | Resource naming prefix and tag | `langfuse` |
 | `user` | User tag for resource identification | - |
+| `github_repo` | GitHub repository for OIDC auth (e.g., `moji-inc/ai-eval`) | - |
 | `vpc_id` | Existing VPC ID (auto-created if null) | `null` |
 | `public_subnet_ids` | Public Subnet IDs (required if vpc_id specified) | `null` |
 | `private_subnet_ids` | Private Subnet IDs (required if vpc_id specified) | `null` |
 | `vpc_cidr` | CIDR for new VPC (only used when auto-creating) | `10.0.0.0/16` |
 | `allowed_cidrs` | Allowed CIDR list for access | - |
-| `allowed_security_group_ids` | Security group IDs allowed to access ALB via HTTPS (for internal AWS services tracing) | `[]` |
+| `allowed_security_group_ids` | Security group IDs allowed to access ALB via HTTPS | `[]` |
+| `langfuse_web_image` | Web container image (null = ECR `:latest`) | `null` |
+| `langfuse_worker_image` | Worker container image (null = ECR `:latest`) | `null` |
+| `clickhouse_image` | ClickHouse container image (null = ECR `:latest`) | `null` |
 | `db_instance_class` | RDS instance class | `db.t4g.micro` |
 | `db_multi_az` | Enable RDS Multi-AZ | `false` |
 | `cache_node_type` | ElastiCache node type | `cache.t4g.micro` |
@@ -322,12 +326,17 @@ terraform apply -var-file=../tfvars/dev.tfvars
 | `private_subnet_ids` | Private Subnet IDs |
 | `ecs_cluster_name` | ECS cluster name |
 | `langfuse_web_service_name` | Web service name |
+| `langfuse_worker_service_name` | Worker service name |
 | `rds_endpoint` | RDS endpoint |
 | `redis_endpoint` | Redis endpoint |
 | `s3_bucket_name` | S3 bucket name |
 | `clickhouse_dns` | ClickHouse internal DNS name |
 | `alb_dns_name` | ALB DNS name (when ALB enabled) |
 | `langfuse_url` | Langfuse access URL |
+| `ecr_web_repository_url` | ECR Web repository URL |
+| `ecr_worker_repository_url` | ECR Worker repository URL |
+| `ecr_clickhouse_repository_url` | ECR ClickHouse repository URL |
+| `github_actions_role_arn` | GitHub Actions OIDC IAM role ARN |
 
 ## Remote State Management (Optional)
 
@@ -371,7 +380,9 @@ cd infra
 terraform destroy -var-file=../tfvars/dev.tfvars
 ```
 
-**Note**: Since `skip_final_snapshot = true` for RDS, no snapshot will be created on deletion. Consider changing this for production environments.
+**Note**:
+- Since `skip_final_snapshot = true` for RDS, no snapshot will be created on deletion. Consider changing this for production environments.
+- ECR repositories have `force_delete = false`. If images exist, delete them first: `aws ecr delete-repository --repository-name langfuse/web --force` (repeat for `worker` and `clickhouse`).
 
 ## Cost Estimate (Tokyo Region)
 

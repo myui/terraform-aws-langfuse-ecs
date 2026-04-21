@@ -54,3 +54,32 @@ output "langfuse_url" {
   description = "Langfuse access URL (HTTPS via ALB with ACM or self-signed certificate)"
   value       = var.enable_alb ? "https://${var.custom_domain != "" ? var.custom_domain : module.langfuse.alb_dns_name}" : "http://<public-ip>:3000"
 }
+
+output "langfuse_worker_service_name" {
+  description = "ECS service name for Langfuse Worker"
+  value       = module.langfuse.worker_service_name
+}
+
+# =============================================================================
+# GitHub Actions 用出力（GHA Variables に設定する値）
+# =============================================================================
+
+output "ecr_web_repository_url" {
+  description = "ECR Web リポジトリ URL（GitHub Actions Variables: ECR_WEB_REPOSITORY_URL）"
+  value       = aws_ecr_repository.web.repository_url
+}
+
+output "ecr_worker_repository_url" {
+  description = "ECR Worker リポジトリ URL（GitHub Actions Variables: ECR_WORKER_REPOSITORY_URL）"
+  value       = aws_ecr_repository.worker.repository_url
+}
+
+output "ecr_clickhouse_repository_url" {
+  description = "ECR ClickHouse リポジトリ URL（GitHub Actions Variables: ECR_CLICKHOUSE_REPOSITORY_URL）"
+  value       = aws_ecr_repository.clickhouse.repository_url
+}
+
+output "github_actions_role_arn" {
+  description = "GitHub Actions OIDC 用 IAM ロール ARN（GitHub Actions Variables: AWS_ROLE_ARN）"
+  value       = aws_iam_role.github_actions.arn
+}

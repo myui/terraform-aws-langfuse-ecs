@@ -1,19 +1,19 @@
 #!/bin/bash
 # =============================================================================
-# Push container images from Docker Hub to ECR
+# ClickHouse イメージを Docker Hub から ECR にプッシュする
 # =============================================================================
-# This script pulls images from Docker Hub and pushes them to ECR.
-# ECR repositories must be created beforehand.
+# Langfuse Web / Worker は GitHub Actions (moji-inc/ai-eval) が自動ビルドする。
+# ClickHouse は公式イメージをそのまま ECR にプッシュする（初回セットアップ時のみ実行）。
 #
-# Prerequisites:
-#   - AWS CLI configured with appropriate permissions
-#   - Docker installed and running
-#   - ECR repositories created
+# 前提条件:
+#   - AWS CLI が設定済みで ECR への push 権限があること
+#   - Docker がインストールされていること
+#   - terraform apply でECRリポジトリが作成済みであること
 #
-# Usage:
-#   ./scripts/push-images.sh <aws_account_id> <aws_region> [repository_prefix]
+# 使い方:
+#   ./scripts/push-images.sh <aws_account_id> <aws_region> [service_name]
 #
-# Example:
+# 例:
 #   ./scripts/push-images.sh 123456789012 ap-northeast-1 langfuse
 # =============================================================================
 
@@ -27,78 +27,40 @@ NC='\033[0m' # No Color
 
 # Check arguments
 if [ $# -lt 2 ]; then
-    echo -e "${RED}Usage: $0 <aws_account_id> <aws_region> [repository_prefix]${NC}"
+    echo -e "${RED}Usage: $0 <aws_account_id> <aws_region> [service_name]${NC}"
     echo "Example: $0 123456789012 ap-northeast-1 langfuse"
     exit 1
 fi
 
 AWS_ACCOUNT_ID="$1"
 AWS_REGION="$2"
-REPO_PREFIX="${3:-langfuse-dev}"
+SERVICE_NAME="${3:-langfuse}"
 
 ECR_BASE="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
-
-# Source images from Docker Hub
-LANGFUSE_WEB_SOURCE="langfuse/langfuse:3"
-LANGFUSE_WORKER_SOURCE="langfuse/langfuse-worker:3"
 CLICKHOUSE_SOURCE="clickhouse/clickhouse-server:24"
+ECR_CLICKHOUSE_URL="${ECR_BASE}/${SERVICE_NAME}/clickhouse"
+PLATFORM="linux/amd64"
 
-# Target ECR repositories (prefix/name format)
-ECR_WEB_URL="${ECR_BASE}/${REPO_PREFIX}/web"
-ECR_WORKER_URL="${ECR_BASE}/${REPO_PREFIX}/worker"
-ECR_CLICKHOUSE_URL="${ECR_BASE}/${REPO_PREFIX}/clickhouse"
-
-echo -e "${GREEN}=== ECR Image Push Script ===${NC}"
+echo -e "${GREEN}=== ClickHouse ECR Push Script ===${NC}"
 echo "AWS Account: ${AWS_ACCOUNT_ID}"
-echo "AWS Region: ${AWS_REGION}"
-echo "Repository Prefix: ${REPO_PREFIX}"
-echo "Platform: ${PLATFORM}"
-echo ""
-echo "Target repositories:"
-echo "  - ${ECR_WEB_URL}"
-echo "  - ${ECR_WORKER_URL}"
-echo "  - ${ECR_CLICKHOUSE_URL}"
+echo "AWS Region:  ${AWS_REGION}"
+echo "Service:     ${SERVICE_NAME}"
+echo "Target:      ${ECR_CLICKHOUSE_URL}"
 echo ""
 
 # Login to ECR
 echo -e "${YELLOW}Logging in to ECR...${NC}"
 aws ecr get-login-password --region "${AWS_REGION}" | docker login --username AWS --password-stdin "${ECR_BASE}"
 
-# Target architecture (ARM64 for Fargate Graviton)
-PLATFORM="linux/arm64"
+# Pull, tag, push
+echo -e "${YELLOW}Pulling ${CLICKHOUSE_SOURCE} for ${PLATFORM}...${NC}"
+docker pull --platform "${PLATFORM}" "${CLICKHOUSE_SOURCE}"
 
-# Function to pull, tag, and push an image
-push_image() {
-    local source_image="$1"
-    local ecr_url="$2"
-    local tag="$3"
-    local name="$4"
-
-    echo ""
-    echo -e "${YELLOW}Processing ${name}...${NC}"
-
-    echo "  Pulling ${source_image} for ${PLATFORM}..."
-    docker pull --platform "${PLATFORM}" "${source_image}"
-
-    echo "  Tagging as ${ecr_url}:${tag}..."
-    docker tag "${source_image}" "${ecr_url}:${tag}"
-
-    echo "  Pushing to ECR..."
-    docker push "${ecr_url}:${tag}"
-
-    echo -e "  ${GREEN}Done!${NC}"
-}
-
-# Push all images
-push_image "${LANGFUSE_WEB_SOURCE}" "${ECR_WEB_URL}" "3" "Langfuse Web"
-push_image "${LANGFUSE_WORKER_SOURCE}" "${ECR_WORKER_URL}" "3" "Langfuse Worker"
-push_image "${CLICKHOUSE_SOURCE}" "${ECR_CLICKHOUSE_URL}" "24" "ClickHouse"
+echo -e "${YELLOW}Pushing to ECR...${NC}"
+docker tag "${CLICKHOUSE_SOURCE}" "${ECR_CLICKHOUSE_URL}:24"
+docker tag "${CLICKHOUSE_SOURCE}" "${ECR_CLICKHOUSE_URL}:latest"
+docker push "${ECR_CLICKHOUSE_URL}:24"
+docker push "${ECR_CLICKHOUSE_URL}:latest"
 
 echo ""
-echo -e "${GREEN}=== All images pushed successfully! ===${NC}"
-echo ""
-echo "Add these to your tfvars file:"
-echo ""
-echo "langfuse_web_image    = \"${ECR_WEB_URL}:3\""
-echo "langfuse_worker_image = \"${ECR_WORKER_URL}:3\""
-echo "clickhouse_image      = \"${ECR_CLICKHOUSE_URL}:24\""
+echo -e "${GREEN}=== ClickHouse image pushed successfully! ===${NC}"
